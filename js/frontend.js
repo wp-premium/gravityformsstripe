@@ -29,7 +29,7 @@ window.GFStripe = null;
 
             // bind Stripe functionality to submit event
             $( '#gform_' + this.formId ).submit( function( event ){
-                if ( $(this).data('gfstripesubmitting') ) {
+                if ($(this).data('gfstripesubmitting') || $('#gform_save_' + GFStripeObj.formId).val() == 1) {
                     return;
                 } else {
                     event.preventDefault();
@@ -45,6 +45,7 @@ window.GFStripe = null;
                         cvc:        form.find( '#' + ccInputPrefix + '3' ).val(),
                         name:       form.find( '#' + ccInputPrefix + '5').val()
                     };
+
 
                 GFStripeObj.form = form;
 
@@ -81,7 +82,8 @@ window.GFStripe = null;
 
                 }
 
-                input.attr( 'name', null );
+                // name attribute is now removed from markup in GFStripe::add_stripe_inputs()
+                //input.attr( 'name', null );
 
             }
 
