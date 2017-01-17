@@ -3,7 +3,7 @@
  * Plugin Name: Gravity Forms Stripe Add-On
  * Plugin URI: http://www.gravityforms.com
  * Description: Integrates Gravity Forms with Stripe, enabling end users to purchase goods and services through Gravity Forms.
- * Version: 2.1
+ * Version: 2.2
  * Author: rocketgenius
  * Author URI: http://www.rocketgenius.com
  * Text Domain: gravityformsstripe
@@ -27,7 +27,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
-define( 'GF_STRIPE_VERSION', '2.1' );
+define( 'GF_STRIPE_VERSION', '2.2' );
 
 // If Gravity Forms is loaded, bootstrap the Stripe Add-On.
 add_action( 'gform_loaded', array( 'GF_Stripe_Bootstrap', 'load' ), 5 );
@@ -36,14 +36,20 @@ add_action( 'gform_loaded', array( 'GF_Stripe_Bootstrap', 'load' ), 5 );
  * Class GF_Stripe_Bootstrap
  *
  * Handles the loading of the Stripe Add-On and registers with the Add-On framework.
+ *
+ * @since 1.0.0
  */
 class GF_Stripe_Bootstrap {
 
 	/**
 	 * If the Payment Add-On Framework exists, Stripe Add-On is loaded.
 	 *
+	 * @since  1.0.0
 	 * @access public
-	 * @static
+	 *
+	 * @uses GFAddOn::register()
+	 *
+	 * @return void
 	 */
 	public static function load() {
 
@@ -60,9 +66,12 @@ class GF_Stripe_Bootstrap {
 }
 
 /**
- * Returns an instance of the GFStripe class
+ * Obtains and returns an instance of the GFStripe class
  *
- * @see    GFStripe::get_instance()
+ * @since  1.0.0
+ * @access public
+ *
+ * @uses GFStripe::get_instance()
  *
  * @return object GFStripe
  */
