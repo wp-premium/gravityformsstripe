@@ -1,4 +1,10 @@
 ---------------------------------------------------
+Version 2.2
+    - Added $meta_key as the fifth parameter of the gform_stripe_field_value filter, containing the custom meta key currently being processed.
+	- Updated string "Stripe Receipt" so it could be translated.
+    - Updated Stripe API library to version 4.3.0.
+
+---------------------------------------------------
 Version 2.1
     - Added the gform_stripe_subscription_cancel_at_period_end filter. See https://www.gravityhelp.com/documentation/article/gform_stripe_subscription_cancel_at_period_end/
     - Added the gform_stripe_charge_authorization_only filter. See https://www.gravityhelp.com/documentation/article/gform_stripe_charge_authorization_only/
