@@ -1,7 +1,4 @@
 <?php
-
-GFForms::include_payment_addon_framework();
-
 /**
  * Gravity Forms Stripe Add-On.
  *
@@ -10,6 +7,19 @@ GFForms::include_payment_addon_framework();
  * @author    Rocketgenius
  * @copyright Copyright (c) 2016, Rocketgenius
  */
+
+// Include the payment add-on framework.
+GFForms::include_payment_addon_framework();
+
+/**
+ * Class GFStripe
+ *
+ * Primary class to manage the Stripe add-on.
+ *
+ * @since 1.0
+ *
+ * @uses GFPaymentAddOn
+ */
 class GFStripe extends GFPaymentAddOn {
 
 	/**
@@ -17,7 +27,10 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access private
-	 * @var    object $_instance If available, contains an instance of this class.
+	 *
+	 * @used-by GFStripe::get_instance()
+	 *
+	 * @var object $_instance If available, contains an instance of this class.
 	 */
 	private static $_instance = null;
 
@@ -26,7 +39,10 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    string $_version Contains the version, defined from stripe.php
+	 *
+	 * @used-by GFStripe::scripts()
+	 *
+	 * @var string $_version Contains the version, defined from stripe.php
 	 */
 	protected $_version = GF_STRIPE_VERSION;
 
@@ -35,7 +51,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    string $_min_gravityforms_version The minimum version required.
+	 *
+	 * @var string $_min_gravityforms_version The minimum version required.
 	 */
 	protected $_min_gravityforms_version = '1.9.14.17';
 
@@ -44,7 +61,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    string $_slug The slug used for this plugin.
+	 *
+	 * @var string $_slug The slug used for this plugin.
 	 */
 	protected $_slug = 'gravityformsstripe';
 
@@ -53,7 +71,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    string $_path The path to the main plugin file, relative to the plugins folder.
+	 *
+	 * @var string $_path The path to the main plugin file, relative to the plugins folder.
 	 */
 	protected $_path = 'gravityformsstripe/stripe.php';
 
@@ -62,7 +81,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    string $_full_path The full path.
+	 *
+	 * @var string $_full_path The full path.
 	 */
 	protected $_full_path = __FILE__;
 
@@ -71,7 +91,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    string The URL of the Add-On.
+	 *
+	 * @var string $_url The URL of the Add-On.
 	 */
 	protected $_url = 'http://www.gravityforms.com';
 
@@ -80,7 +101,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    string $_title The title of the Add-On.
+	 *
+	 * @var string $_title The title of the Add-On.
 	 */
 	protected $_title = 'Gravity Forms Stripe Add-On';
 
@@ -89,7 +111,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    string $_short_title The short title.
+	 *
+	 * @var string $_short_title The short title.
 	 */
 	protected $_short_title = 'Stripe';
 
@@ -98,7 +121,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    bool
+	 *
+	 * @var bool $_enable_rg_autoupgrade true
 	 */
 	protected $_enable_rg_autoupgrade = true;
 
@@ -107,7 +131,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    bool
+	 *
+	 * @var bool $_requires_credit_card true.
 	 */
 	protected $_requires_credit_card = true;
 
@@ -116,21 +141,25 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since  1.0
 	 * @access protected
-	 * @var    bool
+	 *
+	 * @var bool $_supports_callbacks true
 	 */
 	protected $_supports_callbacks = true;
 
 	/**
 	 * Stripe requires monetary amounts to be formatted as the smallest unit for the currency being used e.g. cents.
 	 *
-	 * @var bool
+	 * @since  1.10.1
+	 * @access protected
+	 *
+	 * @var bool $_requires_smallest_unit true
 	 */
 	protected $_requires_smallest_unit = true;
 
 	/**
 	 * Defines the capability needed to access the Add-On settings page.
 	 *
-	 * @since  1.0
+	 * @since  1.4.3
 	 * @access protected
 	 * @var    string $_capabilities_settings_page The capability needed to access the Add-On settings page.
 	 */
@@ -139,7 +168,7 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Defines the capability needed to access the Add-On form settings page.
 	 *
-	 * @since  1.0
+	 * @since  1.4.3
 	 * @access protected
 	 * @var    string $_capabilities_form_settings The capability needed to access the Add-On form settings page.
 	 */
@@ -148,7 +177,7 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Defines the capability needed to uninstall the Add-On.
 	 *
-	 * @since  1.0
+	 * @since  1.4.3
 	 * @access protected
 	 * @var    string $_capabilities_uninstall The capability needed to uninstall the Add-On.
 	 */
@@ -164,9 +193,27 @@ class GFStripe extends GFPaymentAddOn {
 	protected $_capabilities = array( 'gravityforms_stripe', 'gravityforms_stripe_uninstall' );
 
 	/**
+	 * Holds the custom meta key currently being processed. Enables the key to be passed to the gform_stripe_field_value filter.
+	 *
+	 * @since  2.1.1
+	 * @access protected
+	 *
+	 * @used-by GFStripe::maybe_override_field_value()
+	 *
+	 * @var string $_current_meta_key The meta key currently being processed.
+	 */
+	protected $_current_meta_key = '';
+
+	/**
 	 * Get an instance of this class.
 	 *
-	 * @return GFStripe
+	 * @since  1.0
+	 * @access public
+	 *
+	 * @uses GFStripe
+	 * @uses GFStripe::$_instance
+	 *
+	 * @return object GFStripe
 	 */
 	public static function get_instance() {
 
@@ -181,7 +228,17 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Return the scripts which should be enqueued.
 	 *
-	 * @return array
+	 * @since  1.0
+	 * @access public
+	 *
+	 * @uses GFPaymentAddOn::scripts()
+	 * @uses GFAddOn::get_base_url()
+	 * @uses GFAddOn::get_short_title()
+	 * @uses GFStripe::$_version
+	 * @uses GFCommon::get_base_url()
+	 * @uses GFStripe::frontend_script_callback()
+	 *
+	 * @return array The scripts to be enqueued.
 	 */
 	public function scripts() {
 
@@ -231,14 +288,17 @@ class GFStripe extends GFPaymentAddOn {
 
 	}
 
-
-
-
-
 	// # PLUGIN SETTINGS -----------------------------------------------------------------------------------------------
 
 	/**
 	 * Initialize the AJAX hooks.
+	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @uses GFPaymentAddOn::init_ajax()
+	 *
+	 * @return void
 	 */
 	public function init_ajax() {
 
@@ -249,6 +309,18 @@ class GFStripe extends GFPaymentAddOn {
 
 	/**
 	 * Handler for the gf_validate_secret_key AJAX request.
+	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::init_ajax()
+	 * @uses    GFStripe::include_stripe_api()
+	 * @uses    GFAddOn::log_error()
+	 * @uses    \Stripe\Stripe::setApiKey()
+	 * @uses    \Stripe\Account::retrieve()
+	 * @uses    \Stripe\Error\Authentication::getMessage()
+	 *
+	 * @return void
 	 */
 	public function ajax_validate_secret_key() {
 
@@ -288,7 +360,15 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Configures the settings which should be rendered on the add-on settings tab.
 	 *
-	 * @return array
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFAddOn::maybe_save_plugin_settings()
+	 * @used-by GFAddOn::plugin_settings_page()
+	 * @uses    GFStripe::api_settings_fields()
+	 * @uses    GFStripe::get_webhooks_section_description()
+	 *
+	 * @return array Plugin settings fields to add.
 	 */
 	public function plugin_settings_fields() {
 
@@ -328,7 +408,12 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Define the settings which appear in the Stripe API section.
 	 *
-	 * @return array
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::plugin_settings_fields()
+	 *
+	 * @return array The API settings fields.
 	 */
 	public function api_settings_fields() {
 
@@ -406,7 +491,13 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Define the markup to be displayed for the webhooks section description.
 	 *
-	 * @return string
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::plugin_settings_fields()
+	 * @uses    GFStripe::get_webhook_url()
+	 *
+	 * @return string HTML formatted webhooks description.
 	 */
 	public function get_webhooks_section_description() {
 		ob_start();
@@ -447,6 +538,16 @@ class GFStripe extends GFPaymentAddOn {
 
 	/**
 	 * Configures the settings which should be rendered on the feed edit page.
+	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @uses GFPaymentAddOn::feed_settings_fields()
+	 * @uses GFAddOn::replace_field()
+	 * @uses GFAddOn::get_setting()
+	 * @uses GFAddOn::add_field_after()
+	 * @uses GFAddOn::remove_field()
+	 * @uses GFAddOn::add_field_before()
 	 *
 	 * @return array The feed settings.
 	 */
@@ -533,7 +634,7 @@ class GFStripe extends GFPaymentAddOn {
 
 			$receipt_settings = array(
 				'name'    => 'receipt',
-				'label'   => 'Stripe Receipt',
+				'label'   => esc_html__( 'Stripe Receipt', 'gravityformsstripe' ),
 				'type'    => 'receipt',
 				'tooltip' => '<h6>' . esc_html__( 'Stripe Receipt', 'gravityformsstripe' ) . '</h6>' . esc_html__( 'Stripe can send a receipt via email upon payment. Select an email field to enable this feature.', 'gravityformsstripe' ),
 			);
@@ -549,7 +650,16 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Prevent feeds being listed or created if the API keys aren't valid.
 	 *
-	 * @return bool
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFFeedAddOn::feed_edit_page()
+	 * @used-by GFFeedAddOn::feed_list_message()
+	 * @used-by GFFeedAddOn::feed_list_title()
+	 * @uses    GFAddOn::get_plugin_settings()
+	 * @uses    GFStripe::get_api_mode()
+	 *
+	 * @return bool True if feed creation is allowed. False otherwise.
 	 */
 	public function can_create_feed() {
 
@@ -569,9 +679,12 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Enable feed duplication on feed list page and during form duplication.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
 	 * @param int|array $id The ID of the feed to be duplicated or the feed object when duplicating a form.
 	 *
-	 * @return bool
+	 * @return false
 	 */
 	public function can_duplicate_feed( $id ) {
 
@@ -582,7 +695,10 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Define the markup for the field_map setting table header.
 	 *
-	 * @return string
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @return string The header HTML markup.
 	 */
 	public function field_map_table_header() {
 		return '<thead>
@@ -596,10 +712,17 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Define the markup for the receipt type field.
 	 *
-	 * @param array     $field The field properties.
-	 * @param bool|true $echo Should the setting markup be echoed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return string|void
+	 * @uses GFAddOn::get_form_fields_as_choices()
+	 * @uses GFAddOn::get_current_form()
+	 * @uses GFAddOn::settings_select()
+	 *
+	 * @param array     $field The field properties. Not used.
+	 * @param bool|true $echo  Should the setting markup be echoed. Defaults to true.
+	 *
+	 * @return string|void The HTML markup if $echo is set to false. Void otherwise.
 	 */
 	public function settings_receipt( $field, $echo = true ) {
 
@@ -631,10 +754,19 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Define the markup for the setup_fee type field.
 	 *
-	 * @param array     $field The field properties.
-	 * @param bool|true $echo Should the setting markup be echoed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return string|void
+	 * @uses GFPaymentAddOn::get_payment_choices()
+	 * @uses GFAddOn::settings_checkbox()
+	 * @uses GFAddOn::get_current_form()
+	 * @uses GFAddOn::get_setting()
+	 * @uses GFAddOn::settings_select()
+	 *
+	 * @param array     $field The field properties.
+	 * @param bool|true $echo  Should the setting markup be echoed. Defaults to true.
+	 *
+	 * @return string|void The HTML markup if $echo is set to false. Void otherwise.
 	 */
 	public function settings_setup_fee( $field, $echo = true ) {
 
@@ -693,10 +825,15 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Define the markup for the trial type field.
 	 *
-	 * @param array     $field The field properties.
-	 * @param bool|true $echo Should the setting markup be echoed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return string|void
+	 * @uses GFAddOn::settings_checkbox()
+	 *
+	 * @param array     $field The field properties.
+	 * @param bool|true $echo Should the setting markup be echoed. Defaults to true.
+	 *
+	 * @return string|void The HTML markup if $echo is set to false. Void otherwise.
 	 */
 	public function settings_trial( $field, $echo = true ) {
 
@@ -734,10 +871,17 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Define the markup for the trial_period type field.
 	 *
-	 * @param array     $field The field properties.
-	 * @param bool|true $echo Should the setting markup be echoed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return string|void
+	 * @uses GFAddOn::settings_text()
+	 * @uses GFAddOn::field_failed_validation()
+	 * @uses GFAddOn::get_error_icon()
+	 *
+	 * @param array     $field The field properties.
+	 * @param bool|true $echo  Should the setting markup be echoed. Defaults to true.
+	 *
+	 * @return string|void The HTML markup if $echo is set to false. Void otherwise.
 	 */
 	public function settings_trial_period( $field, $echo = true ) {
 
@@ -773,7 +917,15 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Validate the trial_period type field.
 	 *
-	 * @param array $field The field properties.
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @uses GFAddOn::get_posted_settings()
+	 * @uses GFAddOn::set_field_error()
+	 *
+	 * @param array $field The field properties. Not used.
+	 *
+	 * @return void
 	 */
 	public function validate_trial_period( $field ) {
 
@@ -790,7 +942,15 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Validate the custom_meta type field.
 	 *
-	 * @param array $field The field properties.
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @uses GFAddOn::get_posted_settings()
+	 * @uses GFAddOn::set_field_error()
+	 *
+	 * @param array $field The field properties. Not used.
+	 *
+	 * @return void
 	 */
 	public function validate_custom_meta( $field ) {
 
@@ -834,7 +994,12 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Define the choices available in the billing cycle dropdowns.
 	 *
-	 * @return array
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFPaymentAddOn::settings_billing_cycle()
+	 *
+	 * @return array Billing intervals that are supported.
 	 */
 	public function supported_billing_intervals() {
 
@@ -850,7 +1015,12 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Prevent the 'options' checkboxes setting being included on the feed.
 	 *
-	 * @return bool
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFPaymentAddOn::other_settings_fields()
+	 *
+	 * @return false
 	 */
 	public function option_choices() {
 		return false;
@@ -863,9 +1033,15 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Add supported notification events.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFFeedAddOn::notification_events()
+	 * @uses    GFFeedAddOn::has_feed()
+	 *
 	 * @param array $form The form currently being processed.
 	 *
-	 * @return array
+	 * @return array|false The supported notification events. False if feed cannot be found within $form.
 	 */
 	public function supported_notification_events( $form ) {
 
@@ -895,6 +1071,17 @@ class GFStripe extends GFPaymentAddOn {
 
 	/**
 	 * Initialize the frontend hooks.
+	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @uses GFStripe::register_init_scripts()
+	 * @uses GFStripe::add_stripe_inputs()
+	 * @uses GFStripe::pre_validation()
+	 * @uses GFStripe::populate_credit_card_last_four()
+	 * @uses GFPaymentAddOn::init()
+	 *
+	 * @return void
 	 */
 	public function init() {
 
@@ -910,9 +1097,22 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Register Stripe script when displaying form.
 	 *
-	 * @param array $form Form object.
-	 * @param array $field_values Current field values.
-	 * @param bool  $is_ajax If form is being submitted via AJAX.
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::init()
+	 * @uses    GFFeedAddOn::has_feed()
+	 * @uses    GFPaymentAddOn::get_credit_card_field()
+	 * @uses    GFStripe::get_publishable_api_key()
+	 * @uses    GFStripe::get_card_labels()
+	 * @uses    GFFormDisplay::add_init_script()
+	 * @uses    GFFormDisplay::ON_PAGE_RENDER
+	 *
+	 * @param array $form         Form object.
+	 * @param array $field_values Current field values. Not used.
+	 * @param bool  $is_ajax      If form is being submitted via AJAX.
+	 *
+	 * @return void
 	 */
 	public function register_init_scripts( $form, $field_values, $is_ajax ) {
 
@@ -948,9 +1148,16 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Check if the form has an active Stripe feed and a credit card field.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::scripts()
+	 * @uses    GFFeedAddOn::has_feed()
+	 * @uses    GFPaymentAddOn::has_credit_card_field()
+	 *
 	 * @param array $form The form currently being processed.
 	 *
-	 * @return bool
+	 * @return bool If the script should be enqueued.
 	 */
 	public function frontend_script_callback( $form ) {
 
@@ -961,13 +1168,20 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Add required Stripe inputs to form.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::init()
+	 * @uses    GFFeedAddOn::has_feed()
+	 * @uses    GFStripe::get_stripe_js_response()
+	 *
 	 * @param string  $content The field content to be filtered.
-	 * @param object  $field The field that this input tag applies to.
-	 * @param string  $value The default/initial value that the field should be pre-populated with.
+	 * @param object  $field   The field that this input tag applies to.
+	 * @param string  $value   The default/initial value that the field should be pre-populated with.
 	 * @param integer $lead_id When executed from the entry detail screen, $lead_id will be populated with the Entry ID.
 	 * @param integer $form_id The current Form ID.
 	 *
-	 * @return string
+	 * @return string $content HTML formatted content.
 	 */
 	public function add_stripe_inputs( $content, $field, $value, $lead_id, $form_id ) {
 
@@ -1006,12 +1220,19 @@ class GFStripe extends GFPaymentAddOn {
 	 * 1. The field will fail standard validation if marked as required.
 	 * 2. The card type validation will not be performed.
 	 *
-	 * @param array    $result The field validation result and message.
-	 * @param mixed    $value The field input values; empty for the credit card field as they are cleared by frontend.js.
-	 * @param array    $form The Form currently being processed.
-	 * @param GF_Field $field The field currently being processed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return array
+	 * @used-by GFStripe::init()
+	 * @uses    GF_Field_CreditCard::is_card_supported()
+	 * @uses    GFStripe::get_card_slug()
+	 *
+	 * @param array    $result The field validation result and message.
+	 * @param mixed    $value  The field input values; empty for the credit card field as they are cleared by frontend.js.
+	 * @param array    $form   The Form currently being processed.
+	 * @param GF_Field $field  The field currently being processed.
+	 *
+	 * @return array $result The results of the validation.
 	 */
 	public function pre_validation( $result, $value, $form, $field ) {
 
@@ -1037,21 +1258,25 @@ class GFStripe extends GFPaymentAddOn {
 
 	}
 
-
-
-
-
 	// # STRIPE TRANSACTIONS -------------------------------------------------------------------------------------------
 
 	/**
 	 * Initialize authorizing the transaction for the product & services type feed or return the Stripe.js error.
 	 *
-	 * @param array $feed The feed object currently being processed.
-	 * @param array $submission_data The customer and transaction data.
-	 * @param array $form The form object currently being processed.
-	 * @param array $entry The entry object currently being processed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return array
+	 * @uses GFStripe::include_stripe_api()
+	 * @uses GFStripe::get_stripe_js_error()
+	 * @uses GFStripe::authorization_error()
+	 * @uses GFStripe::authorize_product()
+	 *
+	 * @param array $feed            The feed object currently being processed.
+	 * @param array $submission_data The customer and transaction data.
+	 * @param array $form            The form object currently being processed.
+	 * @param array $entry           The entry object currently being processed.
+	 *
+	 * @return array Authorization and transaction ID if authorized. Otherwise, exception.
 	 */
 	public function authorize( $feed, $submission_data, $form, $entry ) {
 
@@ -1071,12 +1296,26 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Create the Stripe charge authorization and return any authorization errors which occur.
 	 *
-	 * @param array $feed The feed object currently being processed.
-	 * @param array $submission_data The customer and transaction data.
-	 * @param array $form The form object currently being processed.
-	 * @param array $entry The entry object currently being processed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return array
+	 * @used-by GFStripe::authorize()
+	 * @uses    GFStripe::get_stripe_js_response()
+	 * @uses    GFPaymentAddOn::get_amount_export()
+	 * @uses    GFStripe::get_payment_description()
+	 * @uses    GFStripe::get_customer()
+	 * @uses    GFAddOn::get_field_value()
+	 * @uses    GFStripe::get_stripe_meta_data()
+	 * @uses    GFAddOn::log_debug()
+	 * @uses    \Stripe\Charge::create()
+	 * @uses    GFPaymentAddOn::authorization_error()
+	 *
+	 * @param array $feed            The feed object currently being processed.
+	 * @param array $submission_data The customer and transaction data.
+	 * @param array $form            The form object currently being processed.
+	 * @param array $entry           The entry object currently being processed.
+	 *
+	 * @return array Authorization and transaction ID if authorized. Otherwise, exception.
 	 */
 	public function authorize_product( $feed, $submission_data, $form, $entry ) {
 
@@ -1147,10 +1386,18 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Handle cancelling the subscription from the entry detail page.
 	 *
-	 * @param array $entry The entry object currently being processed.
-	 * @param array $feed The feed object currently being processed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return bool
+	 * @uses GFStripe::include_stripe_api()
+	 * @uses GFStripe::get_customer()
+	 * @uses GFAddOn::log_debug()
+	 * @uses GFAddOn::log_error()
+	 *
+	 * @param array $entry The entry object currently being processed.
+	 * @param array $feed  The feed object currently being processed.
+	 *
+	 * @return bool True if successful. False if failed.
 	 */
 	public function cancel( $entry, $feed ) {
 
@@ -1209,13 +1456,25 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Capture the Stripe charge which was authorized during validation.
 	 *
-	 * @param array $auth Contains the result of the authorize() function.
-	 * @param array $feed The feed object currently being processed.
-	 * @param array $submission_data The customer and transaction data.
-	 * @param array $form The form object currently being processed.
-	 * @param array $entry The entry object currently being processed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return array
+	 * @uses GFStripe::get_stripe_meta_data()
+	 * @uses GFStripe::get_payment_description()
+	 * @uses \Stripe\Charge::retrieve()
+	 * @uses \Stripe\Charge::save()
+	 * @uses GFAddOn::log_debug()
+	 * @uses \Stripe\Charge::capture()
+	 * @uses GFPaymentAddOn::get_amount_import()
+	 * @uses Exception::getMessage()
+	 *
+	 * @param array $auth            Contains the result of the authorize() function.
+	 * @param array $feed            The feed object currently being processed.
+	 * @param array $submission_data The customer and transaction data.
+	 * @param array $form            The form object currently being processed.
+	 * @param array $entry           The entry object currently being processed.
+	 *
+	 * @return array $payment Contains payment details. If failed, shows failure message.
 	 */
 	public function capture( $auth, $feed, $submission_data, $form, $entry ) {
 
@@ -1238,13 +1497,13 @@ class GFStripe extends GFPaymentAddOn {
 			/**
 			 * Allow authorization only transactions by preventing the capture request from being made after the entry has been saved.
 			 *
-			 * @param bool $authorization_only Defaults to false, return true to prevent payment being captured.
-			 * @param array $feed The feed object currently being processed.
-			 * @param array $submission_data The customer and transaction data.
-			 * @param array $form The form object currently being processed.
-			 * @param array $entry The entry object currently being processed.
-			 *
 			 * @since 2.1.0
+			 *
+			 * @param bool  false            Defaults to false, return true to prevent payment being captured.
+			 * @param array $feed            The feed object currently being processed.
+			 * @param array $submission_data The customer and transaction data.
+			 * @param array $form            The form object currently being processed.
+			 * @param array $entry           The entry object currently being processed.
 			 */
 			$authorization_only = apply_filters( 'gform_stripe_charge_authorization_only', false, $feed, $submission_data, $form, $entry );
 
@@ -1284,11 +1543,21 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Update the entry meta with the Stripe Customer ID.
 	 *
-	 * @param array $authorization Contains the result of the subscribe() function.
-	 * @param array $feed The feed object currently being processed.
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @uses GFStripe::get_stripe_meta_data()
+	 * @uses GFStripe::get_customer()
+	 * @uses GFPaymentAddOn::process_subscription()
+	 * @uses \Stripe\Customer::save()
+	 * @uses \Exception::getMessage()
+	 * @uses GFAddOn::log_error()
+	 *
+	 * @param array $authorization   Contains the result of the subscribe() function.
+	 * @param array $feed            The feed object currently being processed.
 	 * @param array $submission_data The customer and transaction data.
-	 * @param array $form The form object currently being processed.
-	 * @param array $entry The entry object currently being processed.
+	 * @param array $form            The form object currently being processed.
+	 * @param array $entry           The entry object currently being processed.
 	 *
 	 * @return array The entry object.
 	 */
@@ -1332,12 +1601,33 @@ class GFStripe extends GFPaymentAddOn {
 	 * 2 - Create new customer.
 	 * 3 - Create new subscription by subscribing customer to plan.
 	 *
-	 * @param array $feed The feed object currently being processed.
-	 * @param array $submission_data The customer and transaction data.
-	 * @param array $form The form object currently being processed.
-	 * @param array $entry The entry object currently being processed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return array
+	 * @uses GFStripe::include_stripe_api()
+	 * @uses GFStripe::get_stripe_js_error()
+	 * @uses GFPaymentAddOn::authorization_error()
+	 * @uses GFStripe::get_subscription_plan_id()
+	 * @uses GFStripe::get_plan()
+	 * @uses GFStripe::get_stripe_js_response()
+	 * @uses GFStripe::create_plan()
+	 * @uses GFStripe::get_customer()
+	 * @uses GFAddOn::log_debug()
+	 * @uses GFPaymentAddOn::get_amount_export()
+	 * @uses GFAddOn::get_field_value()
+	 * @uses GFStripe::get_stripe_meta_data()
+	 * @uses GFAddOn::maybe_override_field_value()
+	 * @uses GFStripe::create_customer()
+	 * @uses \Stripe\Customer::save()
+	 * @uses \Stripe\Customer::updateSubscription()
+	 * @uses \Stripe\Customer::addInvoiceItem()
+	 *
+	 * @param array $feed            The feed object currently being processed.
+	 * @param array $submission_data The customer and transaction data.
+	 * @param array $form            The form object currently being processed.
+	 * @param array $entry           The entry object currently being processed.
+	 *
+	 * @return array Subscription details if successful. Contains error message if failed.
 	 */
 	public function subscribe( $feed, $submission_data, $form, $entry ) {
 
@@ -1458,21 +1748,27 @@ class GFStripe extends GFPaymentAddOn {
 
 	}
 
-
-
-
-
 	// # STRIPE HELPER FUNCTIONS ---------------------------------------------------------------------------------------
 
 	/**
 	 * Retrieve a specific customer from Stripe.
 	 *
-	 * @param string $customer_id The identifier of the customer to be retrieved.
-	 * @param array $feed The feed currently being processed.
-	 * @param array $entry The entry currently being processed.
-	 * @param array $form The which created the current entry.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return bool|\Stripe\Customer
+	 * @used-by GFStripe::authorize_product()
+	 * @used-by GFStripe::cancel()
+	 * @used-by GFStripe::process_subscription()
+	 * @used-by GFStripe::subscribe()
+	 * @uses    GFAddOn::log_debug()
+	 * @uses    \Stripe\Customer::retrieve()
+	 *
+	 * @param string $customer_id The identifier of the customer to be retrieved.
+	 * @param array  $feed        The feed currently being processed.
+	 * @param array  $entry       The entry currently being processed.
+	 * @param array  $form        The which created the current entry.
+	 *
+	 * @return bool|\Stripe\Customer Contains customer data if available. Otherwise, false.
 	 */
 	public function get_customer( $customer_id, $feed = array(), $entry = array(), $form = array() ) {
 		if ( empty( $customer_id ) && has_filter( 'gform_stripe_customer_id' ) ) {
@@ -1481,12 +1777,13 @@ class GFStripe extends GFPaymentAddOn {
 			/**
 			 * Allow an existing customer ID to be specified for use when processing the submission.
 			 *
-			 * @param string $customer_id The identifier of the customer to be retrieved. Default is empty string.
-			 * @param array $feed The feed currently being processed.
-			 * @param array $entry The entry currently being processed.
-			 * @param array $form The form which created the current entry.
+			 * @since  2.1.0
+			 * @access public
 			 *
-			 * @since 2.1.0
+			 * @param string $customer_id The identifier of the customer to be retrieved. Default is empty string.
+			 * @param array  $feed        The feed currently being processed.
+			 * @param array  $entry       The entry currently being processed.
+			 * @param array  $form        The form which created the current entry.
 			 */
 			$customer_id = apply_filters( 'gform_stripe_customer_id', $customer_id, $feed, $entry, $form );
 		}
@@ -1504,12 +1801,19 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Create and return a Stripe customer with the specified properties.
 	 *
-	 * @param array $customer_meta The customer properties.
-	 * @param array $feed The feed currently being processed.
-	 * @param array $entry The entry currently being processed.
-	 * @param array $form The form which created the current entry.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return \Stripe\Customer
+	 * @used-by GFStripe::subscribe()
+	 * @uses    GFAddOn::log_debug()
+	 * @uses    \Stripe\Customer::create()
+	 *
+	 * @param array $customer_meta The customer properties.
+	 * @param array $feed          The feed currently being processed.
+	 * @param array $entry         The entry currently being processed.
+	 * @param array $form          The form which created the current entry.
+	 *
+	 * @return \Stripe\Customer The Stripe customer object.
 	 */
 	public function create_customer( $customer_meta, $feed, $entry, $form ) {
 
@@ -1526,12 +1830,12 @@ class GFStripe extends GFPaymentAddOn {
 			/**
 			 * Allow custom actions to be performed between the customer being created and subscribed to the plan.
 			 *
-			 * @param Stripe\Customer $customer The Stripe customer object.
-			 * @param array $feed The feed currently being processed.
-			 * @param array $entry The entry currently being processed.
-			 * @param array $form The form currently being processed.
-			 *
 			 * @since 2.0.1
+			 *
+			 * @param Stripe\Customer $customer The Stripe customer object.
+			 * @param array           $feed     The feed currently being processed.
+			 * @param array           $entry    The entry currently being processed.
+			 * @param array           $form     The form currently being processed.
 			 */
 			do_action( 'gform_stripe_customer_after_create', $customer, $feed, $entry, $form );
 		}
@@ -1542,9 +1846,16 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Try and retrieve the plan if a plan with the matching id has previously been created.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::subscribe()
+	 * @uses    \Stripe\Plan::retrieve()
+	 * @uses    GFPaymentAddOn::authorization_error()
+	 *
 	 * @param string $plan_id The subscription plan id.
 	 *
-	 * @return array|bool
+	 * @return array|bool|string $plan The plan details. False if not found. If invalid request, the error message.
 	 */
 	public function get_plan( $plan_id ) {
 
@@ -1580,13 +1891,21 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Create and return a Stripe plan with the specified properties.
 	 *
-	 * @param string $plan_id The plan ID.
-	 * @param array $feed The feed currently being processed.
-	 * @param float|int $payment_amount The recurring amount.
-	 * @param int $trial_period_days The number of days the trial should last.
-	 * @param string $currency The currency code for the entry being processed.
+	 * @since  Unknwon
+	 * @access public
 	 *
-	 * @return \Stripe\Plan
+	 * @used-by GFStripe::subscribe()
+	 * @uses    GFPaymentAddOn::get_amount_export()
+	 * @uses    \Stripe\Plan::create()
+	 * @uses    GFAddOn::log_debug()
+	 *
+	 * @param string    $plan_id           The plan ID.
+	 * @param array     $feed              The feed currently being processed.
+	 * @param float|int $payment_amount    The recurring amount.
+	 * @param int       $trial_period_days The number of days the trial should last.
+	 * @param string    $currency          The currency code for the entry being processed.
+	 *
+	 * @return \Stripe\Plan The plan object.
 	 */
 	public function create_plan( $plan_id, $feed, $payment_amount, $trial_period_days, $currency ) {
 		// Prepare plan metadata.
@@ -1612,9 +1931,16 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Retrieve the specified Stripe Event.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::callback()
+	 * @uses    GFStripe::include_stripe_api()
+	 * @uses    \Stripe\Event::retrieve()
+	 *
 	 * @param string $event_id Stripe Event ID.
 	 *
-	 * @return mixed
+	 * @return \Stripe\Event The Stripe event object.
 	 */
 	public function get_stripe_event( $event_id ) {
 
@@ -1631,11 +1957,20 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * If custom meta data has been configured on the feed retrieve the mapped field values.
 	 *
-	 * @param array $feed The feed object currently being processed.
-	 * @param array $entry The entry object currently being processed.
-	 * @param array $form The form object currently being processed.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return array
+	 * @used-by GFStripe::authorize_product()
+	 * @used-by GFStripe::capture()
+	 * @used-by GFStripe::process_subscription()
+	 * @used-by GFStripe::subscribe()
+	 * @uses    GFAddOn::get_field_value()
+	 *
+	 * @param array $feed  The feed object currently being processed.
+	 * @param array $entry The entry object currently being processed.
+	 * @param array $form  The form object currently being processed.
+	 *
+	 * @return array The Stripe meta data.
 	 */
 	public function get_stripe_meta_data( $feed, $entry, $form ) {
 
@@ -1655,6 +1990,9 @@ class GFStripe extends GFPaymentAddOn {
 					continue;
 				}
 
+				// Make the key available to the gform_stripe_field_value filter.
+				$this->_current_meta_key = $meta['custom_key'];
+
 				// Get field value for meta key.
 				$field_value = $this->get_field_value( $form, $entry, $meta['value'] );
 
@@ -1670,6 +2008,9 @@ class GFStripe extends GFPaymentAddOn {
 
 			}
 
+			// Clear the key in case get_field_value() and gform_stripe_field_value are used elsewhere.
+			$this->_current_meta_key = '';
+
 		}
 
 		return $metadata;
@@ -1679,7 +2020,14 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Check if a Stripe.js has an error or is missing the ID and then return the appropriate message.
 	 *
-	 * @return bool|string
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::authorize()
+	 * @used-by GFStripe::subscribe()
+	 * @uses    GFStripe::get_stripe_js_response()
+	 *
+	 * @return bool|string The error. False if the error does not exist.
 	 */
 	public function get_stripe_js_error() {
 
@@ -1700,6 +2048,14 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Response from Stripe.js is posted to the server as 'stripe_response'.
 	 *
+	 * @since Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::add_stripe_inputs()
+	 * @used-by GFStripe::authorize_product()
+	 * @used-by GFStripe::get_stripe_js_error()
+	 * @used-by GFStripe::subscribe()
+	 *
 	 * @return \Stripe\Token|void A valid Stripe response object or null
 	 */
 	public function get_stripe_js_response() {
@@ -1710,6 +2066,18 @@ class GFStripe extends GFPaymentAddOn {
 
 	/**
 	 * Include the Stripe API and set the current API key.
+	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::ajax_validate_secret_key()
+	 * @used-by GFStripe::authorize()
+	 * @used-by GFStripe::cancel()
+	 * @used-by GFStripe::get_stripe_event()
+	 * @used-by GFStripe::subscribe()
+	 * @uses    GFAddOn::get_base_path()
+	 * @uses    \Stripe\Stripe::setApiKey()
+	 * @uses    GFStripe::get_secret_api_key()
 	 */
 	public function include_stripe_api() {
 
@@ -1723,7 +2091,14 @@ class GFStripe extends GFPaymentAddOn {
 		// Set Stripe API key.
 		\Stripe\Stripe::setApiKey( $this->get_secret_api_key() );
 
-		// Run post Stripe API initialization action.
+		// Send plugin title, version and site url along with API calls.
+		\Stripe\Stripe::setAppInfo( $this->_title, $this->_version, esc_url( site_url() ) );
+
+		/**
+		 * Run post Stripe API initialization action.
+		 *
+		 * @since 2.0.10
+		 */
 		do_action( 'gform_stripe_post_include_api' );
 
 	}
@@ -1736,6 +2111,21 @@ class GFStripe extends GFPaymentAddOn {
 
 	/**
 	 * If the Stripe webhook belongs to a valid entry process the raw response into a standard Gravity Forms $action.
+	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @uses GFAddOn::get_plugin_settings()
+	 * @uses GFStripe::get_api_mode()
+	 * @uses GFStripe::get_stripe_event()
+	 * @uses GFAddOn::log_error()
+	 * @uses GFAddOn::log_debug()
+	 * @uses GFPaymentAddOn::get_entry_by_transaction_id()
+	 * @uses GFPaymentAddOn::get_amount_import()
+	 * @uses GFStripe::get_subscription_line_item()
+	 * @uses GFStripe::get_captured_payment_note()
+	 * @uses GFAPI::get_entry()
+	 * @uses GFCommon::to_money()
 	 *
 	 * @return array|bool|WP_Error Return a valid GF $action or if the webhook can't be processed a WP_Error object or false.
 	 */
@@ -1890,10 +2280,10 @@ class GFStripe extends GFPaymentAddOn {
 			/**
 			 * Enable support for custom webhook events.
 			 *
-			 * @param array $action An associative array containing the event details.
-			 * @param array $event The Stripe event object for the webhook which was received.
-			 *
 			 * @since 1.0.0
+			 *
+			 * @param array $action An associative array containing the event details.
+			 * @param array $event  The Stripe event object for the webhook which was received.
 			 */
 			$action = apply_filters( 'gform_stripe_webhook', $action, $event );
 		}
@@ -1911,7 +2301,12 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Generate the url Stripe webhooks should be sent to.
 	 *
-	 * @return string
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::get_webhooks_section_description()
+	 *
+	 * @return string The webhook URL.
 	 */
 	public function get_webhook_url() {
 
@@ -1922,7 +2317,13 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Helper to check that webhooks are enabled.
 	 *
-	 * @return bool
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::can_create_feed()
+	 * @uses    GFAddOn::get_plugin_setting()
+	 *
+	 * @return bool True if webhook is enabled. False otherwise.
 	 */
 	public function is_webhook_enabled() {
 
@@ -1930,14 +2331,20 @@ class GFStripe extends GFPaymentAddOn {
 
 	}
 
-
-
-
-
 	// # HELPER FUNCTIONS ----------------------------------------------------------------------------------------------
 
 	/**
 	 * Retrieve the specified api key.
+	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::get_publishable_api_key()
+	 * @used-by GFStripe::get_secret_api_key()
+	 * @uses    GFStripe::get_query_string_api_key()
+	 * @uses    GFAddOn::get_plugin_settings()
+	 * @uses    GFStripe::get_api_mode()
+	 * @uses    GFAddOn::get_setting()
 	 *
 	 * @param string $type The type of key to retrieve.
 	 *
@@ -1966,6 +2373,13 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Helper to implement the gform_stripe_api_mode filter so the api mode can be overridden.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::get_api_key()
+	 * @used-by GFStripe::callback()
+	 * @used-by GFStripe::can_create_feed()
+	 *
 	 * @param array $settings The plugin settings.
 	 *
 	 * @return string $api_mode Either live or test.
@@ -1975,7 +2389,13 @@ class GFStripe extends GFPaymentAddOn {
 		// Get API mode from settings.
 		$api_mode = rgar( $settings, 'api_mode' );
 
-		// Filter API mode.
+		/**
+		 * Filters the API mode.
+		 *
+		 * @since 1.10.1
+		 *
+		 * @param string $api_mode The API mode.
+		 */
 		return apply_filters( 'gform_stripe_api_mode', $api_mode );
 
 	}
@@ -1983,9 +2403,14 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Retrieve the specified api key from the query string.
 	 *
-	 * @param string $type The type of key to retrieve.
+	 * @since  Unknown
+	 * @access public
 	 *
-	 * @return string
+	 * @used-by GFStripe::get_api_key()
+	 *
+	 * @param string $type The type of key to retrieve. Defaults to 'secret'.
+	 *
+	 * @return string The result of the query string.
 	 */
 	public function get_query_string_api_key( $type = 'secret' ) {
 
@@ -1996,7 +2421,13 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Retrieve the publishable api key.
 	 *
-	 * @return string
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::register_init_scripts()
+	 * @uses    GFStripe::get_api_key()
+	 *
+	 * @return string The publishable (public) API key.
 	 */
 	public function get_publishable_api_key() {
 
@@ -2007,7 +2438,13 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Retrieve the secret api key.
 	 *
-	 * @return string
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::include_stripe_api()
+	 * @uses    GFStripe::get_api_key()
+	 *
+	 * @return string The secret API key.
 	 */
 	public function get_secret_api_key() {
 
@@ -2018,9 +2455,16 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Retrieve the first part of the subscription's entry note.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::callback()
+	 * @uses    GFAPI::get_entry()
+	 * @uses    GFPaymentAddOn::get_payment_feed()
+	 *
 	 * @param int $entry_id The ID of the entry currently being processed.
 	 *
-	 * @return string
+	 * @return string The payment note. Escaped.
 	 */
 	public function get_captured_payment_note( $entry_id ) {
 
@@ -2041,7 +2485,13 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Retrieve the labels for the various card types.
 	 *
-	 * @return array
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::register_init_scripts()
+	 * @uses    GFCommon::get_card_types()
+	 *
+	 * @return array The card labels available.
 	 */
 	public function get_card_labels() {
 
@@ -2065,6 +2515,12 @@ class GFStripe extends GFPaymentAddOn {
 
 	/**
 	 * Get the slug for the card type returned by Stripe.js
+	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::pre_validation()
+	 * @uses    GFCommon::get_card_types()
 	 *
 	 * @param string $type The possible types are "Visa", "MasterCard", "American Express", "Discover", "Diners Club", and "JCB" or "Unknown".
 	 *
@@ -2097,6 +2553,13 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Populate the $_POST with the last four digits of the card number and card type.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::init()
+	 * @uses    GFPaymentAddOn::$is_payment_gateway
+	 * @uses    GFPaymentAddOn::get_credit_card_field()
+	 *
 	 * @param array $form Form object.
 	 */
 	public function populate_credit_card_last_four( $form ) {
@@ -2114,11 +2577,17 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Add the value of the trialPeriod property to the order data which is to be included in the $submission_data.
 	 *
-	 * @param array $feed The feed currently being processed.
-	 * @param array $form The form currently being processed.
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFPaymentAddOn::get_submission_data()
+	 * @uses    GFPaymentAddOn::get_order_data()
+	 *
+	 * @param array $feed  The feed currently being processed.
+	 * @param array $form  The form currently being processed.
 	 * @param array $entry The entry currently being processed.
 	 *
-	 * @return array
+	 * @return array The order data found.
 	 */
 	public function get_order_data( $feed, $form, $entry ) {
 
@@ -2132,9 +2601,15 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Return the description to be used with the Stripe charge.
 	 *
-	 * @param array $entry The entry object currently being processed.
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::authorize_product()
+	 * @used-by GFStripe::capture()
+	 *
+	 * @param array $entry           The entry object currently being processed.
 	 * @param array $submission_data The customer and transaction data.
-	 * @param array $feed The feed object currently being processed.
+	 * @param array $feed            The feed object currently being processed.
 	 *
 	 * @return string
 	 */
@@ -2159,13 +2634,13 @@ class GFStripe extends GFPaymentAddOn {
 		/**
 		 * Allow the charge description to be overridden.
 		 *
-		 * @param string $description The charge description.
-		 * @param array $strings Contains the Entry ID and Products. The array which was imploded to create the description.
-		 * @param array $entry The entry object currently being processed.
-		 * @param array $submission_data The customer and transaction data.
-		 * @param array $feed The feed object currently being processed.
-		 *
 		 * @since 1.0.0
+		 *
+		 * @param string $description     The charge description.
+		 * @param array  $strings         Contains the Entry ID and Products. The array which was imploded to create the description.
+		 * @param array  $entry           The entry object currently being processed.
+		 * @param array  $submission_data The customer and transaction data.
+		 * @param array  $feed            The feed object currently being processed.
 		 */
 		return apply_filters( 'gform_stripe_charge_description', $description, $strings, $entry, $submission_data, $feed );
 	}
@@ -2173,9 +2648,14 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Retrieve the subscription line item from from the Stripe response.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::capture()
+	 *
 	 * @param array $response The Stripe webhook response.
 	 *
-	 * @return bool|array
+	 * @return bool|array The subscription line items. Returns false if nothing found.
 	 */
 	public function get_subscription_line_item( $response ) {
 
@@ -2193,11 +2673,16 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Generate the subscription plan id.
 	 *
+	 * @since  Unknown
+	 * @access public
+	 *
+	 * @used-by GFStripe::subscribe()
+	 *
 	 * @param array     $feed The feed object currently being processed.
 	 * @param float|int $payment_amount The recurring amount.
 	 * @param int       $trial_period_days The number of days the trial should last.
 	 *
-	 * @return string
+	 * @return string The subscription plan ID, if found.
 	 */
 	public function get_subscription_plan_id( $feed, $payment_amount, $trial_period_days ) {
 
@@ -2210,6 +2695,43 @@ class GFStripe extends GFPaymentAddOn {
 
 		return $plan_id;
 
+	}
+
+	/**
+	 * Enables use of the gform_stripe_field_value filter to override the field value.
+	 *
+	 * @since 2.1.1 Making the $meta_key parameter available to the gform_stripe_field_value filter.
+	 *
+	 * @used-by GFAddOn::get_field_value()
+	 *
+	 * @param string $field_value The field value to be filtered.
+	 * @param array  $form        The form currently being processed.
+	 * @param array  $entry       The entry currently being processed.
+	 * @param string $field_id    The ID of the Field currently being processed.
+	 *
+	 * @return string
+	 */
+	public function maybe_override_field_value( $field_value, $form, $entry, $field_id ) {
+		$meta_key = $this->_current_meta_key;
+		$form_id  = $form['id'];
+
+		/**
+		 * Allow the mapped field value to be overridden.
+		 *
+		 * @since 2.1.1 Added the $meta_key parameter.
+		 * @since 1.9.10.11
+		 *
+		 * @param string $field_value The field value to be filtered.
+		 * @param array  $form        The form currently being processed.
+		 * @param array  $entry       The entry currently being processed.
+		 * @param string $field_id    The ID of the Field currently being processed.
+		 * @param string $meta_key    The custom meta key currently being processed.
+		 */
+		$field_value = apply_filters( 'gform_stripe_field_value', $field_value, $form, $entry, $field_id, $meta_key );
+		$field_value = apply_filters( "gform_stripe_field_value_{$form_id}", $field_value, $form, $entry, $field_id, $meta_key );
+		$field_value = apply_filters( "gform_stripe_field_value_{$form_id}_{$field_id}", $field_value, $form, $entry, $field_id, $meta_key );
+
+		return $field_value;
 	}
 
 }
