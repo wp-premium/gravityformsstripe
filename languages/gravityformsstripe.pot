@@ -1,9 +1,9 @@
 # Copyright 2009-2017 Rocketgenius, Inc.
 msgid ""
 msgstr ""
-"Project-Id-Version: Gravity Forms Stripe Add-On 2.2\n"
+"Project-Id-Version: Gravity Forms Stripe Add-On 2.3\n"
 "Report-Msgid-Bugs-To: http://www.gravtiyhelp.com\n"
-"POT-Creation-Date: 2017-01-05 19:24:57+00:00\n"
+"POT-Creation-Date: 2017-05-16 15:55:37+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -237,53 +237,53 @@ msgstr ""
 msgid "is not supported. Please enter one of the supported credit cards."
 msgstr ""
 
-#: class-gf-stripe.php:2041
+#: class-gf-stripe.php:2054
 msgid "Unable to authorize card. No response from Stripe.js."
 msgstr ""
 
-#: class-gf-stripe.php:2155
+#: class-gf-stripe.php:2170
 msgid ""
 "Test webhook succeeded. Your Stripe Account and Stripe Add-On are "
 "configured correctly to process webhooks."
 msgstr ""
 
-#: class-gf-stripe.php:2164
+#: class-gf-stripe.php:2179
 msgid "Webhook from test transaction. Bypassed."
 msgstr ""
 
-#: class-gf-stripe.php:2177
+#: class-gf-stripe.php:2192
 msgid "Invalid webhook data. Webhook could not be processed."
 msgstr ""
 
-#: class-gf-stripe.php:2194
+#: class-gf-stripe.php:2209
 msgid "Entry for transaction id: %s was not found. Webhook cannot be processed."
 msgstr ""
 
-#: class-gf-stripe.php:2210 class-gf-stripe.php:2231 class-gf-stripe.php:2264
+#: class-gf-stripe.php:2225 class-gf-stripe.php:2246 class-gf-stripe.php:2279
 msgid "Entry for subscription id: %s was not found. Webhook cannot be processed."
 msgstr ""
 
-#: class-gf-stripe.php:2225 class-gf-stripe.php:2258
+#: class-gf-stripe.php:2240 class-gf-stripe.php:2273
 msgid "Subscription line item not found in request"
 msgstr ""
 
-#: class-gf-stripe.php:2250
+#: class-gf-stripe.php:2265
 msgid "Subscription payment has been paid. Amount: %s. Subscription Id: %s"
 msgstr ""
 
-#: class-gf-stripe.php:2477
+#: class-gf-stripe.php:2492
 msgid "Setup fee has been paid."
 msgstr ""
 
-#: class-gf-stripe.php:2479
+#: class-gf-stripe.php:2494
 msgid "Trial has been paid."
 msgstr ""
 
-#: class-gf-stripe.php:2624
+#: class-gf-stripe.php:2639
 msgid "Entry ID: %d"
 msgstr ""
 
-#: class-gf-stripe.php:2628
+#: class-gf-stripe.php:2643
 msgid "Product: %s"
 msgid_plural "Products: %s"
 msgstr[0] ""
