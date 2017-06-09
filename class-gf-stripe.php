@@ -1360,6 +1360,19 @@ class GFStripe extends GFPaymentAddOn {
 				$charge_meta['metadata'] = $metadata;
 			}
 
+			/**
+			 * Allow the charge properties to be overridden before the charge is created by the Stripe API.
+			 *
+			 * @since 2.2.2
+			 *
+			 * @param array $charge_meta     The properties for the charge to be created.
+			 * @param array $feed            The feed object currently being processed.
+			 * @param array $submission_data The customer and transaction data.
+			 * @param array $form            The form object currently being processed.
+			 * @param array $entry           The entry object currently being processed.
+			 */
+			$charge_meta = apply_filters( 'gform_stripe_charge_pre_create', $charge_meta, $feed, $submission_data, $form, $entry );
+
 			// Log the charge we're about to process.
 			$this->log_debug( __METHOD__ . '(): Charge meta to be created => ' . print_r( $charge_meta, 1 ) );
 
@@ -2091,8 +2104,10 @@ class GFStripe extends GFPaymentAddOn {
 		// Set Stripe API key.
 		\Stripe\Stripe::setApiKey( $this->get_secret_api_key() );
 
-		// Send plugin title, version and site url along with API calls.
-		\Stripe\Stripe::setAppInfo( $this->_title, $this->_version, esc_url( site_url() ) );
+		if ( method_exists( '\Stripe\Stripe', 'setAppInfo' ) ) {
+			// Send plugin title, version and site url along with API calls.
+			\Stripe\Stripe::setAppInfo( $this->_title, $this->_version, esc_url( site_url() ) );
+		}
 
 		/**
 		 * Run post Stripe API initialization action.
