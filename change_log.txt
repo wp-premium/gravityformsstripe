@@ -1,3 +1,19 @@
+# 2.4.1 | 2018-02-13
+   - Fixed subscriptions not being processed when using Stripe API version 2018-02-05 or newer.
+   - Updated Stripe API library to version 5.9.2.
+
+
+# 2.4 | 2018-02-05
+   - Added GPL to plugin header.
+   - Added the "gform_stripe_subscription_params_pre_update_customer" filter allowing the subscription parameters to be overridden before the customer is subscribed to the plan.
+   - Added support for webhook signing secrets.
+   - Updated Plugin URI and Author URI to use https.
+   - Updated webhook processing to use the API mode specified in the received event.
+   - Updated Stripe API library to version 5.1.3.
+   - Fixed API mode used to retrieve webhook event when signing secret is configured.
+   - Fixed the card type validation message containing "false" in some situations.
+
+
 # 2.3 | 2017-04-28
    - Added the gform_stripe_charge_pre_create filter. See https://www.gravityhelp.com/documentation/article/gform_stripe_charge_pre_create/
    - Added translations.
