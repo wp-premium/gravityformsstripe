@@ -5,7 +5,7 @@
  * @since     1.0
  * @package   GravityForms
  * @author    Rocketgenius
- * @copyright Copyright (c) 2016, Rocketgenius
+ * @copyright Copyright (c) 2009 - 2018, Rocketgenius
  */
 
 // Include the payment add-on framework.
@@ -396,6 +396,18 @@ class GFStripe extends GFPaymentAddOn {
 						),
 					),
 					array(
+						'name'  => 'test_signing_secret',
+						'label' => esc_html__( 'Test Signing secret', 'gravityformsstripe' ),
+						'type'  => 'text',
+						'class' => 'medium',
+					),
+					array(
+						'name'  => 'live_signing_secret',
+						'label' => esc_html__( 'Live Signing secret', 'gravityformsstripe' ),
+						'type'  => 'text',
+						'class' => 'medium',
+					),
+					array(
 						'type'     => 'save',
 						'messages' => array( 'success' => esc_html__( 'Settings updated successfully', 'gravityformsstripe' ) ),
 					),
@@ -437,13 +449,6 @@ class GFStripe extends GFPaymentAddOn {
 				'horizontal'    => true,
 			),
 			array(
-				'name'     => 'test_secret_key',
-				'label'    => esc_html__( 'Test Secret Key', 'gravityformsstripe' ),
-				'type'     => 'text',
-				'class'    => 'medium',
-				'onchange' => "GFStripeAdmin.validateKey('test_secret_key', this.value);",
-			),
-			array(
 				'name'     => 'test_publishable_key',
 				'label'    => esc_html__( 'Test Publishable Key', 'gravityformsstripe' ),
 				'type'     => 'text',
@@ -451,11 +456,11 @@ class GFStripe extends GFPaymentAddOn {
 				'onchange' => "GFStripeAdmin.validateKey('test_publishable_key', this.value);",
 			),
 			array(
-				'name'     => 'live_secret_key',
-				'label'    => esc_html__( 'Live Secret Key', 'gravityformsstripe' ),
+				'name'     => 'test_secret_key',
+				'label'    => esc_html__( 'Test Secret Key', 'gravityformsstripe' ),
 				'type'     => 'text',
 				'class'    => 'medium',
-				'onchange' => "GFStripeAdmin.validateKey('live_secret_key', this.value);",
+				'onchange' => "GFStripeAdmin.validateKey('test_secret_key', this.value);",
 			),
 			array(
 				'name'     => 'live_publishable_key',
@@ -463,6 +468,13 @@ class GFStripe extends GFPaymentAddOn {
 				'type'     => 'text',
 				'class'    => 'medium',
 				'onchange' => "GFStripeAdmin.validateKey('live_publishable_key', this.value);",
+			),
+			array(
+				'name'     => 'live_secret_key',
+				'label'    => esc_html__( 'Live Secret Key', 'gravityformsstripe' ),
+				'type'     => 'text',
+				'class'    => 'medium',
+				'onchange' => "GFStripeAdmin.validateKey('live_secret_key', this.value);",
 			),
 			array(
 				'label' => 'hidden',
@@ -503,7 +515,7 @@ class GFStripe extends GFPaymentAddOn {
 		ob_start();
 		?>
 
-		<?php esc_html_e( 'Gravity Forms requires the following URL to be added to your Stripe account\'s list of Webhooks.', 'gravityformsstripe' ); ?>
+		<?php esc_html_e( 'Gravity Forms requires the following URL to be added to your Stripe account\'s list of Webhooks for each API mode you will be using.', 'gravityformsstripe' ); ?>
 		<a href="javascript:return false;"
 		   onclick="jQuery('#stripe-webhooks-instructions').slideToggle();"><?php esc_html_e( 'View Instructions', 'gravityformsstripe' ); ?></a>
 
@@ -517,11 +529,12 @@ class GFStripe extends GFPaymentAddOn {
 				</li>
 				<li><?php esc_html_e( 'Click the "Add Endpoint" button above the list of Webhook URLs.', 'gravityformsstripe' ); ?></li>
 				<li>
-					<?php esc_html_e( 'Enter the following URL in the "URL" field:', 'gravityformsstripe' ); ?>
+					<?php esc_html_e( 'Enter the following URL in the "URL to be called" field:', 'gravityformsstripe' ); ?>
 					<code><?php echo $this->get_webhook_url(); ?></code>
 				</li>
-				<li><?php esc_html_e( 'Select "Live" from the "Mode" drop down.', 'gravityformsstripe' ); ?></li>
-				<li><?php esc_html_e( 'Click the "Create Endpoint" button.', 'gravityformsstripe' ); ?></li>
+				<li><?php esc_html_e( 'If offered the choice, select the latest webhook version.', 'gravityformsstripe' ); ?></li>
+				<li><?php esc_html_e( 'Select "Send all event types".', 'gravityformsstripe' ); ?></li>
+				<li><?php esc_html_e( 'Click the "Add Endpoint" button to save the webhook.', 'gravityformsstripe' ); ?></li>
 			</ol>
 
 		</div>
@@ -1239,14 +1252,19 @@ class GFStripe extends GFPaymentAddOn {
 		// If this is a credit card field and the last four credit card digits are defined, validate.
 		if ( $field->type == 'creditcard' && rgpost( 'stripe_credit_card_last_four' ) ) {
 
-			// Get card slug.
+			// Get card type.
 			$card_type = rgpost( 'stripe_credit_card_type' );
+			if ( ! $card_type || $card_type === 'false' ) {
+				$card_type = __( 'Unknown', 'gravityformsstripe' );
+			}
+
+			// Get card slug.
 			$card_slug = $this->get_card_slug( $card_type );
 
 			// If credit card type is not supported, mark field as invalid.
 			if ( ! $field->is_card_supported( $card_slug ) ) {
 				$result['is_valid'] = false;
-				$result['message']  = $card_type . ' ' . esc_html__( 'is not supported. Please enter one of the supported credit cards.', 'gravityforms' );
+				$result['message']  = sprintf( esc_html__( 'Card type (%s) is not supported. Please enter one of the supported credit cards.', 'gravityformsstripe' ), $card_type );
 			} else {
 				$result['is_valid'] = true;
 				$result['message']  = '';
@@ -1659,7 +1677,7 @@ class GFStripe extends GFPaymentAddOn {
 		$currency              = rgar( $entry, 'currency' );
 
 		// Get Stripe plan for feed.
-		$plan_id = $this->get_subscription_plan_id( $feed, $payment_amount, $trial_period_days );
+		$plan_id = $this->get_subscription_plan_id( $feed, $payment_amount, $trial_period_days, $currency );
 		$plan    = $this->get_plan( $plan_id );
 
 		// If error was returned when retrieving plan, return plan.
@@ -1696,12 +1714,6 @@ class GFStripe extends GFPaymentAddOn {
 					$customer->addInvoiceItem( $setup_fee );
 				}
 
-				// Add subscription to customer.
-				$subscription = $customer->updateSubscription( array( 'plan' => $plan->id ) );
-
-				// Define subscription ID.
-				$subscription_id = $subscription->id;
-
 			} else {
 
 				// Prepare customer metadata.
@@ -1722,27 +1734,12 @@ class GFStripe extends GFPaymentAddOn {
 					$customer_meta['coupon'] = $coupon;
 				}
 
-				$has_filter = has_filter( 'gform_stripe_customer_after_create' );
-
-				if ( ! $has_filter ) {
-					// If filter is not being used add the plan to customer metadata; resolves a currency issue.
-					$customer_meta['plan'] = $plan;
-				}
-
 				$customer = $this->create_customer( $customer_meta, $feed, $entry, $form );
 
-				if ( $has_filter ) {
-					// Add subscription to customer.
-					$subscription = $customer->updateSubscription( array( 'plan' => $plan->id ) );
-
-					// Define subscription ID.
-					$subscription_id = $subscription->id;
-				} else {
-					// Define subscription ID.
-					$subscription_id = $customer->subscriptions->data[0]->id;
-				}
-
 			}
+
+			// Add subscription to customer and retrieve the subscription ID.
+			$subscription_id = $this->update_subscription( $customer, $plan, $feed, $entry, $form );
 
 		} catch ( \Exception $e ) {
 
@@ -1904,8 +1901,8 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Create and return a Stripe plan with the specified properties.
 	 *
-	 * @since  Unknwon
-	 * @access public
+	 * @since   Unknown
+	 * @access  public
 	 *
 	 * @used-by GFStripe::subscribe()
 	 * @uses    GFPaymentAddOn::get_amount_export()
@@ -1925,7 +1922,7 @@ class GFStripe extends GFPaymentAddOn {
 		$plan_meta = array(
 			'interval'          => $feed['meta']['billingCycle_unit'],
 			'interval_count'    => $feed['meta']['billingCycle_length'],
-			'name'              => $feed['meta']['feedName'],
+			'product'           => array( 'name' => $feed['meta']['feedName'] ),
 			'currency'          => $currency,
 			'id'                => $plan_id,
 			'amount'            => $this->get_amount_export( $payment_amount, $currency ),
@@ -1942,23 +1939,64 @@ class GFStripe extends GFPaymentAddOn {
 	}
 
 	/**
+	 * Subscribes the customer to the plan.
+	 *
+	 * @since 2.3.4
+	 *
+	 * @param \Stripe\Customer $customer The Stripe customer object.
+	 * @param \Stripe\Plan     $plan     The Stripe plan object.
+	 * @param array            $feed     The feed currently being processed.
+	 * @param array            $entry    The entry currently being processed.
+	 * @param array            $form     The form which created the current entry.
+	 *
+	 * @return string The Stripe subscription ID.
+	 */
+	public function update_subscription( $customer, $plan, $feed, $entry, $form ) {
+
+		$subscription_params = array( 'plan' => $plan->id );
+
+		/**
+		 * Allow the subscription parameters to be overridden before the customer is subscribed to the plan.
+		 *
+		 * @since 2.3.4
+		 *
+		 * @param array            $subscription_params The subscription parameters.
+		 * @param \Stripe\Customer $customer            The Stripe customer object.
+		 * @param \Stripe\Plan     $plan                The Stripe plan object.
+		 * @param array            $feed                The feed currently being processed.
+		 * @param array            $entry               The entry currently being processed.
+		 * @param array            $form                The form which created the current entry.
+		 */
+		$subscription_params = apply_filters( 'gform_stripe_subscription_params_pre_update_customer', $subscription_params, $customer, $plan, $feed, $entry, $form );
+
+		if ( has_filter( 'gform_stripe_subscription_params_pre_update_customer' ) ) {
+			$this->log_debug( __METHOD__ . '(): Subscription parameters => ' . print_r( $subscription_params, 1 ) );
+		}
+
+		$subscription = $customer->updateSubscription( $subscription_params );
+
+		return $subscription->id;
+	}
+
+	/**
 	 * Retrieve the specified Stripe Event.
 	 *
-	 * @since  Unknown
-	 * @access public
+	 * @since   Unknown
+	 * @access  public
 	 *
 	 * @used-by GFStripe::callback()
 	 * @uses    GFStripe::include_stripe_api()
 	 * @uses    \Stripe\Event::retrieve()
 	 *
-	 * @param string $event_id Stripe Event ID.
+	 * @param string      $event_id Stripe Event ID.
+	 * @param null|string $mode     The API mode; live or test.
 	 *
 	 * @return \Stripe\Event The Stripe event object.
 	 */
-	public function get_stripe_event( $event_id ) {
+	public function get_stripe_event( $event_id, $mode = null ) {
 
 		// Include Stripe API library.
-		$this->include_stripe_api();
+		$this->include_stripe_api( $mode );
 
 		// Get Stripe event.
 		$event = \Stripe\Event::retrieve( $event_id );
@@ -2069,7 +2107,7 @@ class GFStripe extends GFPaymentAddOn {
 	 * @used-by GFStripe::get_stripe_js_error()
 	 * @used-by GFStripe::subscribe()
 	 *
-	 * @return \Stripe\Token|void A valid Stripe response object or null
+	 * @return \Stripe\Token|null A valid Stripe response object or null
 	 */
 	public function get_stripe_js_response() {
 
@@ -2080,8 +2118,8 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Include the Stripe API and set the current API key.
 	 *
-	 * @since  Unknown
-	 * @access public
+	 * @since   Unknown
+	 * @access  public
 	 *
 	 * @used-by GFStripe::ajax_validate_secret_key()
 	 * @used-by GFStripe::authorize()
@@ -2091,18 +2129,20 @@ class GFStripe extends GFPaymentAddOn {
 	 * @uses    GFAddOn::get_base_path()
 	 * @uses    \Stripe\Stripe::setApiKey()
 	 * @uses    GFStripe::get_secret_api_key()
+	 *
+	 * @param null|string $mode The API mode; live or test.
 	 */
-	public function include_stripe_api() {
+	public function include_stripe_api( $mode = null ) {
 
 		// If Stripe class does not exist, load Stripe API library.
 		if ( ! class_exists( '\Stripe\Stripe' ) ) {
-			require_once( $this->get_base_path() . '/includes/stripe-php/init.php' );
+			require_once( $this->get_base_path() . '/includes/autoload.php' );
 		}
 
 		require_once( $this->get_base_path() . '/includes/deprecated.php' );
 
 		// Set Stripe API key.
-		\Stripe\Stripe::setApiKey( $this->get_secret_api_key() );
+		\Stripe\Stripe::setApiKey( $this->get_secret_api_key( $mode ) );
 
 		if ( method_exists( '\Stripe\Stripe', 'setAppInfo' ) ) {
 			// Send plugin title, version and site url along with API calls.
@@ -2146,56 +2186,15 @@ class GFStripe extends GFPaymentAddOn {
 	 */
 	public function callback() {
 
-		// Get webhook request contents.
-		$body = @file_get_contents( 'php://input' );
+		$event = $this->get_webhook_event();
 
-		// Decoded request.
-		$response = json_decode( $body, true );
-
-		// If response is empty, attempt to retrieve it from post data.
-		if ( empty( $response ) ) {
-
-			if ( strpos( $body, 'ipn_is_json' ) !== false ) {
-				$response = json_decode( $_POST, true );
-			}
-
-			if ( empty( $response ) ) {
-				return false;
-			}
-
-		}
-
-		// Handling test webhooks.
-		if ( 'evt_00000000000000' === $response['id'] ) {
-			return new WP_Error( 'test_webhook_succeeded', __( 'Test webhook succeeded. Your Stripe Account and Stripe Add-On are configured correctly to process webhooks.', 'gravityformsstripe' ), array( 'status_header' => 200 ) );
-		}
-
-		// Get API mode.
-		$settings = $this->get_plugin_settings();
-		$mode     = $this->get_api_mode( $settings );
-
-		// If API is in production mode and this is a test request, return an error.
-		if ( false === $response['livemode'] && 'live' === $mode ) {
-			return new WP_Error( 'invalid_request', __( 'Webhook from test transaction. Bypassed.', 'gravityformsstripe' ) );
-		}
-
-		try {
-
-			// Verify this is a Stripe request by retrieving the Stripe event (based on the ID in the response).
-			$event = $this->get_stripe_event( $response['id'] );
-
-		} catch ( \Exception $e ) {
-
-			// Log that event could not be retrieved.
-			$this->log_error( __METHOD__ . '(): Unable to retrieve Stripe Event object. ' . $e->getMessage() );
-
-			return new WP_Error( 'invalid_request', __( 'Invalid webhook data. Webhook could not be processed.', 'gravityformsstripe' ), array( 'status_header' => 500 ) );
-
+		if ( ! $event || is_wp_error( $event ) ) {
+			return $event;
 		}
 
 		// Get event properties.
-		$action = array( 'id' => $event['id'] );
-		$type   = rgar( $event, 'type' );
+		$action = array( 'id' => $event->id );
+		$type   = $event->type;
 
 		$this->log_debug( __METHOD__ . '() Webhook event details => ' . print_r( $action + array( 'type' => $type ), 1 ) );
 
@@ -2262,7 +2261,7 @@ class GFStripe extends GFPaymentAddOn {
 				}
 
 				$amount_formatted = GFCommon::to_money( $action['amount'], $entry['currency'] );
-				$action['note'] .= sprintf( __( 'Subscription payment has been paid. Amount: %s. Subscription Id: %s', 'gravityformsstripe' ), $amount_formatted, $action['subscription_id'] );
+				$action['note']   .= sprintf( __( 'Subscription payment has been paid. Amount: %s. Subscription Id: %s', 'gravityformsstripe' ), $amount_formatted, $action['subscription_id'] );
 
 				break;
 
@@ -2297,8 +2296,8 @@ class GFStripe extends GFPaymentAddOn {
 			 *
 			 * @since 1.0.0
 			 *
-			 * @param array $action An associative array containing the event details.
-			 * @param array $event  The Stripe event object for the webhook which was received.
+			 * @param array         $action An associative array containing the event details.
+			 * @param \Stripe\Event $event  The Stripe event object for the webhook which was received.
 			 */
 			$action = apply_filters( 'gform_stripe_webhook', $action, $event );
 		}
@@ -2311,6 +2310,77 @@ class GFStripe extends GFPaymentAddOn {
 
 		return $action;
 
+	}
+
+	/**
+	 * Retrieve the Stripe Event for the received webhook.
+	 *
+	 * @since 2.3.1
+	 *
+	 * @return false|WP_Error|\Stripe\Event
+	 */
+	public function get_webhook_event() {
+
+		$body     = @file_get_contents( 'php://input' );
+		$response = json_decode( $body, true );
+
+		if ( empty( $response ) ) {
+			return false;
+		}
+
+		$mode = rgempty( 'livemode', $response ) ? 'test' : 'live';
+		$this->log_debug( __METHOD__ . '(): Processing ' . $mode . ' mode event.' );
+
+		$endpoint_secret = $this->get_webhook_signing_secret( $mode );
+		$event           = $error_message = false;
+
+		$event_id      = rgar( $response, 'id' );
+		$is_test_event = 'evt_00000000000000' === $event_id;
+
+		try {
+
+			if ( empty( $endpoint_secret ) && ! $is_test_event ) {
+
+				// Use the legacy method for getting the event.
+				$event = $this->get_stripe_event( $event_id, $mode );
+
+			} else {
+
+				$this->include_stripe_api( $mode );
+				$sig_header = $_SERVER['HTTP_STRIPE_SIGNATURE'];
+				$event      = \Stripe\Webhook::constructEvent( $body, $sig_header, $endpoint_secret );
+
+			}
+
+		} catch ( \UnexpectedValueException $e ) {
+
+			// Invalid payload.
+			$error_message = $e->getMessage();
+
+		} catch ( \Stripe\Error\SignatureVerification $e ) {
+
+			// Invalid signature.
+			$error_message = $e->getMessage();
+
+		} catch ( \Exception $e ) {
+
+			// Any other issue.
+			$error_message = $e->getMessage();
+
+		}
+
+		if ( $error_message ) {
+			$this->log_error( __METHOD__ . '(): Unable to retrieve Stripe Event object. ' . $error_message );
+			$message = __( 'Invalid request. Webhook could not be processed.', 'gravityformsstripe' ) . ' ' . $error_message;
+
+			return new WP_Error( 'invalid_request', $message, array( 'status_header' => 400 ) );
+		}
+
+		if ( $is_test_event ) {
+			return new WP_Error( 'test_webhook_succeeded', __( 'Test webhook succeeded. Your Stripe Account and Stripe Add-On are configured correctly to process webhooks.', 'gravityformsstripe' ), array( 'status_header' => 200 ) );
+		}
+
+		return $event;
 	}
 
 	/**
@@ -2351,8 +2421,8 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Retrieve the specified api key.
 	 *
-	 * @since  Unknown
-	 * @access public
+	 * @since   Unknown
+	 * @access  public
 	 *
 	 * @used-by GFStripe::get_publishable_api_key()
 	 * @used-by GFStripe::get_secret_api_key()
@@ -2361,11 +2431,12 @@ class GFStripe extends GFPaymentAddOn {
 	 * @uses    GFStripe::get_api_mode()
 	 * @uses    GFAddOn::get_setting()
 	 *
-	 * @param string $type The type of key to retrieve.
+	 * @param string      $type The type of key to retrieve.
+	 * @param null|string $mode The API mode; live or test.
 	 *
 	 * @return string
 	 */
-	public function get_api_key( $type = 'secret' ) {
+	public function get_api_key( $type = 'secret', $mode = null ) {
 
 		// Check for api key in query first; user must be an administrator to use this feature.
 		$api_key = $this->get_query_string_api_key( $type );
@@ -2373,9 +2444,12 @@ class GFStripe extends GFPaymentAddOn {
 			return $api_key;
 		}
 
-		// Get API mode.
 		$settings = $this->get_plugin_settings();
-		$mode     = $this->get_api_mode( $settings );
+
+		if ( ! $mode ) {
+			// Get API mode.
+			$mode = $this->get_api_mode( $settings );
+		}
 
 		// Get API key based on current mode and defined type.
 		$setting_key = "{$mode}_{$type}_key";
@@ -2436,8 +2510,8 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Retrieve the publishable api key.
 	 *
-	 * @since  Unknown
-	 * @access public
+	 * @since   Unknown
+	 * @access  public
 	 *
 	 * @used-by GFStripe::register_init_scripts()
 	 * @uses    GFStripe::get_api_key()
@@ -2453,17 +2527,45 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Retrieve the secret api key.
 	 *
-	 * @since  Unknown
-	 * @access public
+	 * @since   Unknown
+	 * @access  public
 	 *
 	 * @used-by GFStripe::include_stripe_api()
 	 * @uses    GFStripe::get_api_key()
 	 *
+	 * @param null|string $mode    The API mode; live or test.
+	 *
 	 * @return string The secret API key.
 	 */
-	public function get_secret_api_key() {
+	public function get_secret_api_key( $mode = null ) {
 
-		return $this->get_api_key( 'secret' );
+		return $this->get_api_key( 'secret', $mode );
+
+	}
+
+	/**
+	 * Retrieve the webhook signing secret for the specified API mode.
+	 *
+	 * @since 2.3.1
+	 *
+	 * @param string $mode The API mode; live or test.
+	 *
+	 * @return string
+	 */
+	public function get_webhook_signing_secret( $mode ) {
+
+		$signing_secret = $this->get_plugin_setting( $mode . '_signing_secret' );
+
+		/**
+		 * Override the webhook signing secret for the specified API mode.
+		 *
+		 * @param string   $signing_secret The signing secret to be used when validating received webhooks.
+		 * @param string   $mode           The API mode; live or test.
+		 * @param GFStripe $gfstripe       GFStripe class object
+		 *
+		 * @since 2.3.1
+		 */
+		return apply_filters( 'gform_stripe_webhook_signing_secret', $signing_secret, $mode, $this );
 
 	}
 
@@ -2668,7 +2770,7 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @used-by GFStripe::capture()
 	 *
-	 * @param array $response The Stripe webhook response.
+	 * @param \Stripe\Event $response The Stripe webhook response.
 	 *
 	 * @return bool|array The subscription line items. Returns false if nothing found.
 	 */
@@ -2688,25 +2790,38 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Generate the subscription plan id.
 	 *
-	 * @since  Unknown
-	 * @access public
+	 * @since   2.3.4 Added the $currency param.
+	 * @since   Unknown
+	 * @access  public
 	 *
 	 * @used-by GFStripe::subscribe()
 	 *
-	 * @param array     $feed The feed object currently being processed.
-	 * @param float|int $payment_amount The recurring amount.
+	 * @param array     $feed              The feed object currently being processed.
+	 * @param float|int $payment_amount    The recurring amount.
 	 * @param int       $trial_period_days The number of days the trial should last.
+	 * @param string    $currency          The currency code for the entry being processed.
 	 *
 	 * @return string The subscription plan ID, if found.
 	 */
-	public function get_subscription_plan_id( $feed, $payment_amount, $trial_period_days ) {
+	public function get_subscription_plan_id( $feed, $payment_amount, $trial_period_days, $currency = '' ) {
 
 		$safe_trial_period = $trial_period_days ? 'trial' . $trial_period_days . 'days' : '';
 
 		$safe_feed_name     = str_replace( ' ', '', strtolower( $feed['meta']['feedName'] ) );
 		$safe_billing_cycle = $feed['meta']['billingCycle_length'] . $feed['meta']['billingCycle_unit'];
 
-		$plan_id = implode( '_', array_filter( array( $safe_feed_name, $feed['id'], $safe_billing_cycle, $safe_trial_period, $payment_amount ) ) );
+		/*
+		 * Only include the currency code in the plan id when the entry currency does not match the plugin currency.
+		 * Ensures the majority of plans created before this change will continue to be used.
+		 * https://stripe.com/docs/subscriptions/plans#working-with-local-currencies
+		*/
+		if ( ! empty( $currency ) && $currency === GFCommon::get_currency() ) {
+			$currency = '';
+		}
+
+		$plan_id = implode( '_', array_filter( array( $safe_feed_name, $feed['id'], $safe_billing_cycle, $safe_trial_period, $payment_amount, $currency ) ) );
+
+		$this->log_debug( __METHOD__ . '(): ' . $plan_id );
 
 		return $plan_id;
 
