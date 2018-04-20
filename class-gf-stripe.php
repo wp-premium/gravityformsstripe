@@ -2205,7 +2205,7 @@ class GFStripe extends GFPaymentAddOn {
 				$action['transaction_id'] = rgars( $event, 'data/object/id' );
 				$entry_id                 = $this->get_entry_by_transaction_id( $action['transaction_id'] );
 				if ( ! $entry_id ) {
-					return new WP_Error( 'entry_not_found', sprintf( __( 'Entry for transaction id: %s was not found. Webhook cannot be processed.', 'gravityformsstripe' ), $action['transaction_id'] ) );
+					return new WP_Error( 'entry_not_found', sprintf( __( 'Entry for transaction id: %s was not found. Webhook cannot be processed.', 'gravityformsstripe' ), $action['transaction_id'] ), array( 'status_header' => '404' ) );
 				}
 
 				$entry = GFAPI::get_entry( $entry_id );
@@ -2221,7 +2221,7 @@ class GFStripe extends GFPaymentAddOn {
 				$action['subscription_id'] = rgars( $event, 'data/object/id' );
 				$entry_id                  = $this->get_entry_by_transaction_id( $action['subscription_id'] );
 				if ( ! $entry_id ) {
-					return new WP_Error( 'entry_not_found', sprintf( __( 'Entry for subscription id: %s was not found. Webhook cannot be processed.', 'gravityformsstripe' ), $action['subscription_id'] ) );
+					return new WP_Error( 'entry_not_found', sprintf( __( 'Entry for subscription id: %s was not found. Webhook cannot be processed.', 'gravityformsstripe' ), $action['subscription_id'] ), array( 'status_header' => '404' ) );
 				}
 
 				$entry = GFAPI::get_entry( $entry_id );
@@ -2242,7 +2242,7 @@ class GFStripe extends GFPaymentAddOn {
 				$action['subscription_id'] = rgar( $subscription, 'id' );
 				$entry_id                  = $this->get_entry_by_transaction_id( $action['subscription_id'] );
 				if ( ! $entry_id ) {
-					return new WP_Error( 'entry_not_found', sprintf( __( 'Entry for subscription id: %s was not found. Webhook cannot be processed.', 'gravityformsstripe' ), $action['subscription_id'] ) );
+					return new WP_Error( 'entry_not_found', sprintf( __( 'Entry for subscription id: %s was not found. Webhook cannot be processed.', 'gravityformsstripe' ), $action['subscription_id'] ), array( 'status_header' => '404' ) );
 				}
 
 				$entry = GFAPI::get_entry( $entry_id );
