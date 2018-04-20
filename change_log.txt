@@ -1,6 +1,9 @@
-# 2.4.1 | 2018-02-13
-   - Fixed subscriptions not being processed when using Stripe API version 2018-02-05 or newer.
+# 2.5 | 2018-04-09
+   - Updated callback error 'entry_not_found' to return a header status of 404.
    - Updated Stripe API library to version 5.9.2.
+   - Fixed security issue.
+   - Fixed security issue.
+   - Fixed subscriptions not being processed when using Stripe API version 2018-02-05 or newer.
 
 
 # 2.4 | 2018-02-05
