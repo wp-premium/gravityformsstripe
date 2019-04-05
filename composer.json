@@ -1,0 +1,9 @@
+{
+    "name": "wp-premium/gravityformsstripe",
+    "type": "wordpress-plugin",
+    "autoload": {
+        "classmap": [
+            "."
+        ]
+    }
+}
