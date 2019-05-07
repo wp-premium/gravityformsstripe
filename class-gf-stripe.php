@@ -293,6 +293,9 @@ class GFStripe extends GFPaymentAddOn {
 				'enqueue'   => array(
 					array( $this, 'frontend_script_callback' ),
 				),
+				'strings'   => array(
+					'no_active_frontend_feed' => esc_html__( 'The credit card field will initiate once the payment condition is met.', 'gravityformsstripe' ),
+				),
 			),
 			array(
 				'handle'    => 'gforms_stripe_admin',
@@ -1351,23 +1354,20 @@ class GFStripe extends GFPaymentAddOn {
 		add_filter( 'gform_field_css_class', array( $this, 'stripe_card_field_css_class' ), 10, 3 );
 		add_filter( 'gform_submission_values_pre_save', array( $this, 'stripe_card_submission_value_pre_save' ), 10, 3 );
 
+		// Supports frontend feeds.
+		$this->_supports_frontend_feeds = true;
+
 		if ( $this->get_plugin_setting( 'checkout_method' ) !== 'credit_card' ) {
 			$this->_requires_credit_card = false;
 		}
 
 		if ( $this->is_stripe_checkout_enabled() ) {
-			$this->_supports_frontend_feeds = true;
-
 			// Stripe Checkout doesn't require a CC field, so we need to validate card types with a separate function.
 			add_filter( 'gform_validation', array( $this, 'card_type_validation' ) );
 			// Stripe Checkout doesn't require a CC field, so we can't populate the response with populate_credit_card_last_four().
 			// hence populate stripe response with another function (this will happen when form validation fails).
 			add_filter( 'gform_form_tag', array( $this, 'populate_stripe_response' ) );
 		}
-
-		if ( $this->has_stripe_card_field() ) {
-			$this->_supports_frontend_feeds = true;
-        }
 
 		parent::init();
 
@@ -1421,7 +1421,7 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		// getting all Stripe feeds.
-		$args['currency'] = GFCommon::get_currency();
+		$args['currency'] = gf_apply_filters( array( 'gform_currency_pre_save_entry', $form['id'] ), GFCommon::get_currency(), $form );
 		$feeds            = $this->get_feeds_by_slug( $this->_slug, $form['id'] );
 		$args['feeds']    = array();
 		if ( $this->has_stripe_card_field( $form ) ) {
@@ -1634,6 +1634,8 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Validate if the card type is supported.
 	 *
+	 * @since 2.6.0
+	 *
 	 * @param array $validation_result The results of the validation.
 	 *
 	 * @return array $validation_result The results of the validation.
@@ -1674,6 +1676,8 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Display card type validation error message.
 	 *
+	 * @since 2.6.0
+	 *
 	 * @param string $message HTML message string.
 	 * @param array  $form Form object.
 	 *
@@ -1687,6 +1691,23 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		$message .= "<div class='validation_error'>" . sprintf( esc_html__( 'Card type (%s) is not supported. Please enter one of the supported credit cards.', 'gravityformsstripe' ), $card_type ) . '</div>';
+
+		return $message;
+	}
+
+	/**
+	 * Display card type validation error message.
+	 *
+	 * @since 2.6.1
+	 *
+	 * @param string $message HTML message string.
+	 *
+	 * @return string
+	 */
+	public function stripe_checkout_error_message( $message ) {
+		$authorization_result = $this->authorization;
+
+		$message .= "<div class='validation_error'>" . $authorization_result['error_message'] . '</div>';
 
 		return $message;
 	}
@@ -1910,14 +1931,25 @@ class GFStripe extends GFPaymentAddOn {
 	 * @return array The validation result for the credit card field.
 	 */
 	public function get_validation_result( $validation_result, $authorization_result ) {
-		$credit_card_page = 0;
+	    if ( empty( $authorization_result['error_message'] ) ) {
+	        return $validation_result;
+        }
+
+		$credit_card_page   = 0;
+		$has_error_cc_field = false;
 		foreach ( $validation_result['form']['fields'] as &$field ) {
 			if ( $field->type === 'creditcard' || $field->type === 'stripe_creditcard' ) {
+				$has_error_cc_field        = true;
 				$field->failed_validation  = true;
 				$field->validation_message = $authorization_result['error_message'];
 				$credit_card_page          = $field->pageNumber;
 				break;
 			}
+		}
+
+		if ( ! $has_error_cc_field && $this->is_stripe_checkout_enabled() ) {
+			$credit_card_page = GFFormDisplay::get_max_page_number( $validation_result['form'] );
+			add_filter( 'gform_validation_message', array( $this, 'stripe_checkout_error_message' ) );
 		}
 
 		$validation_result['credit_card_page'] = $credit_card_page;
@@ -2649,10 +2681,15 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		// Get event properties.
-		$action = array( 'id' => $event->id );
+		$action = $log_details = array( 'id' => $event->id );
 		$type   = $event->type;
 
-		$this->log_debug( __METHOD__ . '() Webhook event details => ' . print_r( $action + array( 'type' => $type ), 1 ) );
+		$log_details += array(
+			'type'        => $type,
+			'webhook api_version' => $event->api_version,
+		);
+
+		$this->log_debug( __METHOD__ . '() Webhook event details => ' . print_r( $log_details, 1 ) );
 
 		switch ( $type ) {
 
@@ -3457,7 +3494,7 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @param array $form Form object. Defaults to null.
 	 *
-	 * @return array
+	 * @return boolean
 	 */
 	public function has_stripe_card_field( $form = null ) {
 	    // Get form
@@ -3465,8 +3502,7 @@ class GFStripe extends GFPaymentAddOn {
 			$form = $this->get_current_form();
         }
 
-		// Get Stripe card field for form.
-		return GFAPI::get_fields_by_type( $form, array( 'stripe_creditcard' ) );
+		return $this->get_stripe_card_field( $form ) !== false;
 	}
 
 	/**
@@ -3533,6 +3569,51 @@ class GFStripe extends GFPaymentAddOn {
 
 		return $fields;
 
+	}
+
+	/**
+	 * Returns the specified plugin setting.
+	 *
+	 * @since 2.6.0.1
+	 *
+	 * @param string $setting_name The setting to be returned.
+	 *
+	 * @return mixed|string
+	 */
+	public function get_plugin_setting( $setting_name ) {
+		$setting = parent::get_plugin_setting( $setting_name );
+
+		if ( ! $setting && $setting_name === 'checkout_method' ) {
+			$setting = 'credit_card';
+		}
+
+		return $setting;
+	}
+
+	/**
+	 * Target of gform_before_delete_field hook. Sets relevant payment feeds to inactive when the Stripe Card field is deleted.
+	 *
+	 * @since 2.6.1
+	 *
+	 * @param int $form_id ID of the form being edited.
+	 * @param int $field_id ID of the field being deleted.
+	 */
+	public function before_delete_field( $form_id, $field_id ) {
+	    parent::before_delete_field( $form_id, $field_id );
+
+	    $form = GFAPI::get_form( $form_id );
+		if ( $this->has_stripe_card_field( $form ) ) {
+			$field = $this->get_stripe_card_field( $form );
+
+			if ( is_object( $field ) && $field->id == $field_id ) {
+				$feeds = $this->get_feeds( $form_id );
+				foreach ( $feeds as $feed ) {
+					if ( $feed['is_active'] ) {
+						$this->update_feed_active( $feed['id'], 0 );
+					}
+				}
+			}
+		}
 	}
 
 }
