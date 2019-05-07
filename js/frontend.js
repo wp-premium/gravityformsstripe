@@ -62,6 +62,17 @@ window.GFStripe = null;
 
 					gform.addAction('gform_frontend_feeds_evaluated', function () {
 						if ( feedActivated ) {
+							// If Stripe Card is already on the page (AJAX failed validation, or switch frontend feeds),
+							// Destroy the card field so we can re-initiate it.
+							if ( elements._elements.indexOf('card') >= 0 ) {
+								card.destroy();
+							}
+
+							// Clear card field errors before initiate it.
+							if ($(GFCCFieldId).next('.validation_message').length) {
+								$(GFCCFieldId).next('.validation_message').html('');
+							}
+
 							card = elements.create(
 									'card',
 									{
@@ -74,16 +85,19 @@ window.GFStripe = null;
 							card.mount(GFCCFieldId);
 
 							card.on('change', function (event) {
-								if (!$(GFCCFieldId).next('.validation_message').length) {
-									$(GFCCFieldId).after('<div class="gfield_description validation_message"></div>')
-								}
-								var cardErrors = $(GFCCFieldId).next('.validation_message');
-								if (event.error) {
-									cardErrors.html(event.error.message);
-								} else {
-									cardErrors.html('');
-								}
+								GFStripeObj.displayStripeCardError(event);
 							});
+						} else {
+							if ( elements._elements.indexOf('card') >= 0 ) {
+								card.destroy();
+							}
+
+							if (!$(GFCCFieldId).next('.validation_message').length) {
+								$(GFCCFieldId).after('<div class="gfield_description validation_message"></div>');
+							}
+
+							var cardErrors = $(GFCCFieldId).next('.validation_message');
+							cardErrors.html( gforms_stripe_frontend_strings.no_active_frontend_feed );
 						}
 					});
 					break;
@@ -103,6 +117,12 @@ window.GFStripe = null;
 						},
 						handler;
 
+					// Set priority to 51 so it will be triggered after the coupons add-on
+					gform.addFilter('gform_product_total', function (total, formId) {
+						window['gform_stripe_checkout_amount_' + formId] = total;
+						return total;
+					}, 51);
+
 					handler = StripeCheckout.configure(options);
 
 					// clear Stripe response when total changed, so Stripe Checkout would be triggered again
@@ -117,8 +137,6 @@ window.GFStripe = null;
 						if (!feedActivated || form.data('gfstripesubmitting'))
 							return;
 
-						event.preventDefault();
-
 						// Must not has the card type error
 						if ($('#gf_stripe_response').length && $('#gf_stripe_response').val() !== '') {
 							var response = $.parseJSON($('#gf_stripe_response').val());
@@ -129,11 +147,9 @@ window.GFStripe = null;
 						}
 
 						// Open Checkout with further options:
-						var amount = gformToNumber($(".ginput_total_" + GFStripeObj.formId).html());
-
 						options = {
-							amount: (0 === gf_global.gf_currency_config.decimals) ? amount : amount * 100,
-							currency: GFStripeObj.currency,
+							amount: (0 === gf_global.gf_currency_config.decimals) ? window['gform_stripe_checkout_amount_' + GFStripeObj.formId] : window['gform_stripe_checkout_amount_' + GFStripeObj.formId] * 100,
+							currency: gform.applyFilters( 'gform_stripe_currency', GFStripeObj.currency, GFStripeObj.formId ),
 							locale: 'auto',
 							image: activeFeed.logoUrl,
 							name: GFMergeTag.replaceMergeTags( GFStripeObj.formId, activeFeed.name ),
@@ -144,7 +160,12 @@ window.GFStripe = null;
 						options.billingAddress = activeFeed.billingAddress;
 
 						options = gform.applyFilters( 'gform_stripe_checkout_options', options, GFStripeObj.formId );
-						handler.open(options);
+
+						if ( options.amount > 0 ) {
+							event.preventDefault();
+							options.amount = Math.round(options.amount);
+							handler.open(options);
+						}
 					});
 
 					// Close Checkout on page navigation:
@@ -190,15 +211,19 @@ window.GFStripe = null;
 							address_state: GFMergeTag.replaceMergeTags(GFStripeObj.formId, GFStripeObj.getBillingAddressMergeTag(activeFeed.address_state)),
 							address_zip: GFMergeTag.replaceMergeTags(GFStripeObj.formId, GFStripeObj.getBillingAddressMergeTag(activeFeed.address_zip)),
 							address_country: GFMergeTag.replaceMergeTags(GFStripeObj.formId, GFStripeObj.getBillingAddressMergeTag(activeFeed.address_country)),
-							currency: GFStripeObj.currency
+							currency: gform.applyFilters( 'gform_stripe_currency', GFStripeObj.currency, GFStripeObj.formId )
 						};
 						stripe.createToken(card, tokenData).then(function (response) {
 							GFStripeObj.elementsResponseHandler(response);
 						});
 						break;
 					case 'checkout':
-						GFStripeObj.form = $(this);
-						GFStripeObj.checkoutResponseHandler();
+						if (window['gform_stripe_checkout_amount_' + GFStripeObj.formId] > 0) {
+							GFStripeObj.form = $(this);
+							GFStripeObj.checkoutResponseHandler();
+						} else {
+							$(this).submit();
+						}
 						break;
 					case 'stripe.js':
 						var form = $(this),
@@ -290,6 +315,8 @@ window.GFStripe = null;
 				// submit the form
 				form.submit();
 			} else {
+				// display error below the card field.
+				this.displayStripeCardError(response);
 				// when Stripe response contains errors, stay on page
 				// but remove some elements so the form can be submitted again
 				// also remove last_4 and card type if that already exists (this happens when people navigate back to previous page and submit an empty CC field)
@@ -372,6 +399,22 @@ window.GFStripe = null;
 			// must do this or the form cannot be submitted again
 			if (isLastPage) {
 				window["gf_submitting_" + formId] = false;
+			}
+		};
+
+		this.displayStripeCardError = function (event) {
+			var GFCCFieldId = '#input_' + this.formId + '_' + this.ccFieldId + '_1';
+
+			if (!$(GFCCFieldId).next('.validation_message').length) {
+				$(GFCCFieldId).after('<div class="gfield_description validation_message"></div>');
+			}
+
+			var cardErrors = $(GFCCFieldId).next('.validation_message');
+
+			if (event.error) {
+				cardErrors.html(event.error.message);
+			} else {
+				cardErrors.html('');
 			}
 		};
 
