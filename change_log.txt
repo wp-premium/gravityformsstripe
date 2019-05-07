@@ -1,13 +1,30 @@
+# 2.7 | 2019-04-17
+   - Fixed an issue that authorization errors weren't displayed for Stripe Checkout.
+   - Fixed the amount decimal issue for Stripe Checkout.
+   - Fixed an issue that no error message for the Stripe Card when no feed is activated.
+   - Fixed an issue that when the Stripe API Publishable Key is empty or invalid, the form submission would fail but there was no error showed up for the Stripe Card field.
+   - Fixed an issue that the Stripe Card field disappears after form validation failed in AJAX mode.
+   - Fixed an issue that Cardholder Name in the Stripe Card field is always empty if it's not on the last page of a multi-page form.
+   - Fixed an issue that Stripe Checkout modal should not be trigger when the form total is zero.
+   - Added support for calculating all product fields as the form total in Stripe Checkout.
+   - Added support to deactivate Stripe feeds when the Stripe Card field is deleted.
+   - Added support to frontend feeds regardless of the payment collection method.
+   - Added support for the currency filter `gform_currency_pre_save_entry`. Added a new JS filter `gform_stripe_currency`.
+   - Updated webhook event logging statement to include the webhook API version.
+   - Fixed Stripe Card field not rendering for forms embedded in front-end pages.
+   - Fixed the credit card field button not being displayed in the form editor for existing installs.
+
+
 # 2.6 | 2019-02-11
-	- Added support for Stripe Checkout.
-	- Added support for Stripe Credit Card (Stripe Elements).
-	- Added support for the "charge.expired" event; changing the entry payment status from Authorized to Voided when an authorization expires.
-	- Added the "gform_stripe_entry_not_found_status_code" filter enabling the status code to be overridden.
-	- Reverted the callback error 'entry_not_found' to return a header status code of 200.
-	- Fixed processing of "invoice.payment_succeeded" and "invoice.payment_failed" events with Stripe API version 2018-05-21.
-	- Fixed a refund transaction being recorded in the sales tab when an authorized charge is manually released via the Stripe.com dashboard.
-	- Fixed plan creation with Stripe API version 2018-05-21.
-	- Fixed trials for new subscriptions with Stripe API version 2018-05-21.
+   - Added support for Stripe Checkout.
+   - Added support for Stripe Credit Card (Stripe Elements).
+   - Added support for the "charge.expired" event; changing the entry payment status from Authorized to Voided when an authorization expires.
+   - Added the "gform_stripe_entry_not_found_status_code" filter enabling the status code to be overridden.
+   - Reverted the callback error 'entry_not_found' to return a header status code of 200.
+   - Fixed processing of "invoice.payment_succeeded" and "invoice.payment_failed" events with Stripe API version 2018-05-21.
+   - Fixed a refund transaction being recorded in the sales tab when an authorized charge is manually released via the Stripe.com dashboard.
+   - Fixed plan creation with Stripe API version 2018-05-21.
+   - Fixed trials for new subscriptions with Stripe API version 2018-05-21.
 
 
 # 2.5 | 2018-04-09

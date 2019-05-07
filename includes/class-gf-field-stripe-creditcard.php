@@ -248,6 +248,18 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 
 			return $cc_input;
 		} else {
+			$cardholder_name = '';
+			if ( ! empty( $value ) ) {
+				$cardholder_name = esc_attr( rgget( $this->id . '.5', $value ) );
+			}
+
+			$api_key    = gf_stripe()->get_publishable_api_key();
+			$card_error = '';
+			if ( empty( $api_key ) ) {
+				$card_error = sprintf( esc_html__( '%sPlease check your Stripe API Settings. Your Publishable Key is empty.%s' ), '<div class="gfield_description validation_message">', '</div>' );
+				$hide_cardholder_name = true;
+			}
+
 			$cc_input = "<div class='ginput_complex{$class_suffix} ginput_container ginput_container_creditcard' id='{$field_id}'>";
 
 			if ( $is_sub_label_above ) {
@@ -259,18 +271,20 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 				}
 				$cc_input .= "
 							<div id='{$field_id}_1'></div>
+							{$card_error}
 						</div>";
 				if ( ! $hide_cardholder_name ) {
 					$cc_input .= "
 						<div class='ginput_full' id='{$field_id}_5_container'>
 							<label for='{$field_id}_5' id='{$field_id}_5_label' {$sub_label_class_attribute}>" . $cardholder_name_sub_label . "</label>
-							<input type='text' name='input_{$id}.5' id='{$field_id}_5' value='' {$cardholder_name_placehoder}>
+							<input type='text' name='input_{$id}.5' id='{$field_id}_5' value='{$cardholder_name}' {$cardholder_name_placehoder}>
 						</div>";
 				}
 			} else {
 				$cc_input .= "
 						<div class='ginput_full' id='{$field_id}_1_container'>
-							<div id='{$field_id}_1'></div>";
+							<div id='{$field_id}_1'></div>
+							{$card_error}";
 				if ( ! $hide_cardholder_name ) {
 					$cc_input .= "
 							<label for='{$field_id}_1' id='{$field_id}_1_label' {$sub_label_class_attribute}>" . $card_details_sub_label . '</label>';
@@ -280,7 +294,7 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 				if ( ! $hide_cardholder_name ) {
 					$cc_input .= "
 						<div class='ginput_full' id='{$field_id}_5_container'>
-							<input type='text' name='input_{$id}.5' id='{$field_id}_5' value='' {$cardholder_name_placehoder}>
+							<input type='text' name='input_{$id}.5' id='{$field_id}_5' value='{$cardholder_name}' {$cardholder_name_placehoder}>
 							<label for='{$field_id}_5' id='{$field_id}_5_label' {$sub_label_class_attribute}>" . $cardholder_name_sub_label . '</label>
 						</div>';
 				}
