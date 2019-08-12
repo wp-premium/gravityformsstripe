@@ -2,6 +2,8 @@
 
 namespace Stripe\Error\OAuth;
 
+defined( 'ABSPATH' ) || die();
+
 /**
  * InvalidGrant is raised when a specified code doesn't exist, is
  * expired, has been used, or doesn't belong to you; a refresh token doesn't
