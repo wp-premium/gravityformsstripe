@@ -2,6 +2,8 @@
 
 namespace Stripe\Error;
 
+defined( 'ABSPATH' ) || die();
+
 class SignatureVerification extends Base
 {
     public function __construct(

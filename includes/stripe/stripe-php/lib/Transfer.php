@@ -2,6 +2,8 @@
 
 namespace Stripe;
 
+defined( 'ABSPATH' ) || die();
+
 /**
  * Class Transfer
  *
@@ -12,10 +14,11 @@ namespace Stripe;
  * @property string $balance_transaction
  * @property int $created
  * @property string $currency
+ * @property string $description
  * @property string $destination
  * @property string $destination_payment
  * @property bool $livemode
- * @property AttachedObject $metadata
+ * @property StripeObject $metadata
  * @property Collection $reversals
  * @property bool $reversed
  * @property string $source_transaction
@@ -26,53 +29,25 @@ namespace Stripe;
  */
 class Transfer extends ApiResource
 {
+
+    const OBJECT_NAME = "transfer";
+
+    use ApiOperations\All;
+    use ApiOperations\Create;
+    use ApiOperations\NestedResource;
+    use ApiOperations\Retrieve;
+    use ApiOperations\Update;
+
     const PATH_REVERSALS = '/reversals';
 
     /**
-     * @param array|string $id The ID of the transfer to retrieve, or an
-     *     options array containing an `id` key.
-     * @param array|string|null $opts
-     *
-     * @return Transfer
+     * Possible string representations of the source type of the transfer.
+     * @link https://stripe.com/docs/api/transfers/object#transfer_object-source_type
      */
-    public static function retrieve($id, $opts = null)
-    {
-        return self::_retrieve($id, $opts);
-    }
-
-    /**
-     * @param array|null $params
-     * @param array|string|null $opts
-     *
-     * @return Collection of Transfers
-     */
-    public static function all($params = null, $opts = null)
-    {
-        return self::_all($params, $opts);
-    }
-
-    /**
-     * @param array|null $params
-     * @param array|string|null $opts
-     *
-     * @return Transfer The created transfer.
-     */
-    public static function create($params = null, $opts = null)
-    {
-        return self::_create($params, $opts);
-    }
-
-    /**
-     * @param string $id The ID of the transfer to update.
-     * @param array|null $params
-     * @param array|string|null $options
-     *
-     * @return Transfer The updated transfer.
-     */
-    public static function update($id, $params = null, $options = null)
-    {
-        return self::_update($id, $params, $options);
-    }
+    const SOURCE_TYPE_ALIPAY_ACCOUNT = 'alipay_account';
+    const SOURCE_TYPE_BANK_ACCOUNT   = 'bank_account';
+    const SOURCE_TYPE_CARD           = 'card';
+    const SOURCE_TYPE_FINANCING      = 'financing';
 
     /**
      * @return TransferReversal The created transfer reversal.
@@ -97,17 +72,7 @@ class Transfer extends ApiResource
     }
 
     /**
-     * @param array|string|null $opts
-     *
-     * @return Transfer The saved transfer.
-     */
-    public function save($opts = null)
-    {
-        return $this->_save($opts);
-    }
-
-    /**
-     * @param array|null $id The ID of the transfer on which to create the reversal.
+     * @param string|null $id The ID of the transfer on which to create the reversal.
      * @param array|null $params
      * @param array|string|null $opts
      *
@@ -119,7 +84,7 @@ class Transfer extends ApiResource
     }
 
     /**
-     * @param array|null $id The ID of the transfer to which the reversal belongs.
+     * @param string|null $id The ID of the transfer to which the reversal belongs.
      * @param array|null $reversalId The ID of the reversal to retrieve.
      * @param array|null $params
      * @param array|string|null $opts
@@ -132,7 +97,7 @@ class Transfer extends ApiResource
     }
 
     /**
-     * @param array|null $id The ID of the transfer to which the reversal belongs.
+     * @param string|null $id The ID of the transfer to which the reversal belongs.
      * @param array|null $reversalId The ID of the reversal to update.
      * @param array|null $params
      * @param array|string|null $opts
@@ -145,11 +110,11 @@ class Transfer extends ApiResource
     }
 
     /**
-     * @param array|null $id The ID of the transfer on which to retrieve the reversals.
+     * @param string|null $id The ID of the transfer on which to retrieve the reversals.
      * @param array|null $params
      * @param array|string|null $opts
      *
-     * @return TransferReversal
+     * @return Collection The list of reversals.
      */
     public static function allReversals($id, $params = null, $opts = null)
     {

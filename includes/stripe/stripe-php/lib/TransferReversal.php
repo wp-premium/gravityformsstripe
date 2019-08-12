@@ -2,6 +2,8 @@
 
 namespace Stripe;
 
+defined( 'ABSPATH' ) || die();
+
 /**
  * Class TransferReversal
  *
@@ -11,13 +13,22 @@ namespace Stripe;
  * @property string $balance_transaction
  * @property int $created
  * @property string $currency
- * @property AttachedObject $metadata
+ * @property string $destination_payment_refund
+ * @property StripeObject $metadata
+ * @property string $source_refund
  * @property string $transfer
  *
  * @package Stripe
  */
 class TransferReversal extends ApiResource
 {
+
+    const OBJECT_NAME = "transfer_reversal";
+
+    use ApiOperations\Update {
+        save as protected _save;
+    }
+
     /**
      * @return string The API URL for this Stripe transfer reversal.
      */
