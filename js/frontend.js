@@ -21,59 +21,37 @@ window.GFStripe = null;
 			if (!this.isCreditCardOnPage() && this.stripe_payment !== 'checkout')
 				return;
 
-			var GFStripeObj = this;
+			var GFStripeObj = this, activeFeed = null, feedActivated = false, hidePostalCode = false, apiKey = GFStripeObj.apiKey;
+			gform.addAction('gform_frontend_feeds_evaluated', function (feeds, formId) {
+				activeFeed = null;
+				feedActivated = false;
+				hidePostalCode = false;
 
-			if (GFStripeObj.stripe_payment !== 'stripe.js') {
-				var activatedFeedId = 0, activeFeed = null, feedActivated = false, hidePostalCode = false;
-				gform.addAction('gform_frontend_feed_activated', function (feed, formId) {
-					if (feed.addonSlug === 'gravityformsstripe' && feed.isActivated) {
+				for (var i = 0; i < Object.keys(feeds).length; i++) {
+					if (feeds[i].addonSlug === 'gravityformsstripe' && feeds[i].isActivated) {
 						feedActivated = true;
-						activatedFeedId = feed.feedId;
-						for (var i = 0; i < Object.keys(GFStripeObj.feeds).length; i++) {
-							if (GFStripeObj.feeds[i].feedId === activatedFeedId) {
-								activeFeed = GFStripeObj.feeds[i];
-								if (GFStripeObj.stripe_payment === 'elements') {
-									hidePostalCode = activeFeed.address_zip !== '';
+						activeFeed = GFStripeObj.feeds[i];
+						apiKey = activeFeed.hasOwnProperty('apiKey') ? activeFeed.apiKey : GFStripeObj.apiKey;
+
+						switch (GFStripeObj.stripe_payment) {
+							case 'elements':
+								stripe = Stripe(apiKey);
+								elements = stripe.elements();
+
+								hidePostalCode = activeFeed.address_zip !== '';
+
+								// If Stripe Card is already on the page (AJAX failed validation, or switch frontend feeds),
+								// Destroy the card field so we can re-initiate it.
+								if ( elements._elements.indexOf('card') >= 0 ) {
+									card.destroy();
 								}
-								break;
-							}
-						}
-					}
-				});
-				gform.addAction('gform_frontend_feed_deactivated', function (feed, formId) {
-					if (feed.addonSlug === 'gravityformsstripe' && !feed.isActivated && (activatedFeedId === feed.feedId)) {
-						feedActivated = false;
-						if (GFStripeObj.stripe_payment === 'elements') {
-							hidePostalCode = false;
-						}
-						// remove Stripe fields and form status when Stripe feed deactivated
-						GFStripeObj.form = $('#gform_' + formId);
-						GFStripeObj.resetStripeStatus(GFStripeObj.form, formId, GFStripeObj.isLastPage());
-					}
-				});
-			}
 
-			switch (GFStripeObj.stripe_payment) {
-				case 'elements':
-					var stripe = Stripe(this.apiKey),
-						elements = stripe.elements(),
-						GFCCFieldId = '#input_' + GFStripeObj.formId + '_' + GFStripeObj.ccFieldId + '_1',
-						card = null;
+								// Clear card field errors before initiate it.
+								if ($(GFCCFieldId).next('.validation_message').length) {
+									$(GFCCFieldId).next('.validation_message').html('');
+								}
 
-					gform.addAction('gform_frontend_feeds_evaluated', function () {
-						if ( feedActivated ) {
-							// If Stripe Card is already on the page (AJAX failed validation, or switch frontend feeds),
-							// Destroy the card field so we can re-initiate it.
-							if ( elements._elements.indexOf('card') >= 0 ) {
-								card.destroy();
-							}
-
-							// Clear card field errors before initiate it.
-							if ($(GFCCFieldId).next('.validation_message').length) {
-								$(GFCCFieldId).next('.validation_message').html('');
-							}
-
-							card = elements.create(
+								card = elements.create(
 									'card',
 									{
 										classes: GFStripeObj.cardClasses,
@@ -82,29 +60,73 @@ window.GFStripe = null;
 									}
 								);
 
-							card.mount(GFCCFieldId);
+								card.mount(GFCCFieldId);
 
-							card.on('change', function (event) {
-								GFStripeObj.displayStripeCardError(event);
-							});
-						} else {
-							if ( elements._elements.indexOf('card') >= 0 ) {
-								card.destroy();
-							}
+								card.on('change', function (event) {
+									GFStripeObj.displayStripeCardError(event);
+								});
+								break;
+							case 'checkout':
+								if (typeof handler !== 'undefined') {
+									handler.close();
+								}
+								options.key = apiKey;
+								handler = StripeCheckout.configure(options);
 
-							if (!$(GFCCFieldId).next('.validation_message').length) {
-								$(GFCCFieldId).after('<div class="gfield_description validation_message"></div>');
-							}
+								if ( activeFeed.paymentAmount === 'form_total' ) {
+									// Set priority to 51 so it will be triggered after the coupons add-on
+									gform.addFilter('gform_product_total', function (total, formId) {
+										window['gform_stripe_checkout_amount_' + formId] = total;
+										return total;
+									}, 51);
 
-							var cardErrors = $(GFCCFieldId).next('.validation_message');
-							cardErrors.html( gforms_stripe_frontend_strings.no_active_frontend_feed );
+									gformCalculateTotalPrice(formId);
+								}
+
+								GFStripeObj.updateCheckoutPaymentAmount(activeFeed);
+								break;
+							case 'stripe.js':
+								Stripe.setPublishableKey(apiKey);
+								break;
 						}
-					});
+
+						break; // allow only one active feed.
+					}
+				}
+
+				if (!feedActivated) {
+					if (GFStripeObj.stripe_payment === 'elements') {
+						if ( elements !== null && elements._elements.indexOf('card') >= 0 ) {
+							card.destroy();
+						}
+
+						if (!$(GFCCFieldId).next('.validation_message').length) {
+							$(GFCCFieldId).after('<div class="gfield_description validation_message"></div>');
+						}
+
+						var cardErrors = $(GFCCFieldId).next('.validation_message');
+						cardErrors.html( gforms_stripe_frontend_strings.no_active_frontend_feed );
+					}
+
+					// remove Stripe fields and form status when Stripe feed deactivated
+					GFStripeObj.form = $('#gform_' + formId);
+					GFStripeObj.resetStripeStatus(GFStripeObj.form, formId, GFStripeObj.isLastPage());
+					apiKey = GFStripeObj.apiKey;
+				}
+			});
+
+			switch (GFStripeObj.stripe_payment) {
+				case 'elements':
+					var stripe = null,
+						elements = null,
+						GFCCFieldId = '#input_' + GFStripeObj.formId + '_' + GFStripeObj.ccFieldId + '_1',
+						card = null,
+						skipTokenCreation = false;
 					break;
 				case 'checkout':
 					var form = $('#gform_' + this.formId),
 						options = {
-							key: this.apiKey,
+							key: apiKey,
 							token: function (response) {
 								// append Stripe checkout response
 								if ($('#gf_stripe_response').length) {
@@ -117,19 +139,13 @@ window.GFStripe = null;
 						},
 						handler;
 
-					// Set priority to 51 so it will be triggered after the coupons add-on
-					gform.addFilter('gform_product_total', function (total, formId) {
-						window['gform_stripe_checkout_amount_' + formId] = total;
-						return total;
-					}, 51);
-
-					handler = StripeCheckout.configure(options);
-
 					// clear Stripe response when total changed, so Stripe Checkout would be triggered again
 					$(document).on('gform_price_change', function(){
 						if ($('#gf_stripe_response').length) {
 							$('#gf_stripe_response').val('');
 						}
+
+						GFStripeObj.updateCheckoutPaymentAmount(activeFeed);
 					});
 
 					// on form submit button clicked
@@ -173,9 +189,6 @@ window.GFStripe = null;
 						handler.close();
 					});
 					break;
-				case 'stripe.js':
-					Stripe.setPublishableKey(this.apiKey);
-					break;
 			}
 
 			// bind Stripe functionality to submit event
@@ -197,7 +210,14 @@ window.GFStripe = null;
 					case 'elements':
 						GFStripeObj.form = $(this);
 
-						if ((GFStripeObj.isLastPage() && !GFStripeObj.isCreditCardOnPage()) || gformIsHidden($(GFCCFieldId))) {
+						// don't create card token if clicking on the Previous button.
+						var sourcePage = parseInt($('#gform_source_page_number_' + GFStripeObj.formId).val(), 10),
+						    targetPage = parseInt($('#gform_target_page_number_' + GFStripeObj.formId).val(), 10);
+						if (sourcePage > targetPage && targetPage !== 0) {
+							skipTokenCreation = true;
+						}
+
+						if ((GFStripeObj.isLastPage() && !GFStripeObj.isCreditCardOnPage()) || gformIsHidden($(GFCCFieldId)) || skipTokenCreation) {
 							$(this).submit();
 							return;
 						}
@@ -413,8 +433,40 @@ window.GFStripe = null;
 
 			if (event.error) {
 				cardErrors.html(event.error.message);
+				// Hide spinner.
+				if ( $('#gform_ajax_spinner_' + this.formId).length > 0 ) {
+					$('#gform_ajax_spinner_' + this.formId).remove();
+				}
 			} else {
 				cardErrors.html('');
+			}
+		};
+
+		this.updateCheckoutPaymentAmount = function (activeFeed) {
+			var formId = this.formId;
+
+			if (activeFeed.paymentAmount !== 'form_total') {
+				var price = GFMergeTag.getMergeTagValue(formId, activeFeed.paymentAmount, ':price'),
+					qty = GFMergeTag.getMergeTagValue(formId, activeFeed.paymentAmount, ':qty');
+
+				if (typeof price === 'string') {
+					price = GFMergeTag.getMergeTagValue(formId, activeFeed.paymentAmount + '.2', ':price');
+					qty = GFMergeTag.getMergeTagValue(formId, activeFeed.paymentAmount + '.3', ':qty');
+				}
+
+				window['gform_stripe_checkout_amount_' + formId] = price * qty;
+			}
+
+			if (activeFeed.hasOwnProperty('setupFee')) {
+				price = GFMergeTag.getMergeTagValue(formId, activeFeed.setupFee, ':price');
+				qty = GFMergeTag.getMergeTagValue(formId, activeFeed.setupFee, ':qty');
+
+				if (typeof price === 'string') {
+					price = GFMergeTag.getMergeTagValue(formId, activeFeed.setupFee + '.2', ':price');
+					qty = GFMergeTag.getMergeTagValue(formId, activeFeed.setupFee + '.3', ':qty');
+				}
+
+				window['gform_stripe_checkout_amount_' + formId] += price * qty;
 			}
 		};
 

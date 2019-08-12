@@ -2,6 +2,8 @@
 
 namespace Stripe;
 
+defined( 'ABSPATH' ) || die();
+
 /**
  * Class BitcoinTransaction
  *
@@ -10,4 +12,5 @@ namespace Stripe;
 class BitcoinTransaction extends ApiResource
 {
 
+    const OBJECT_NAME = "bitcoin_transaction";
 }

@@ -1,5 +1,8 @@
 #!/usr/bin/env php
 <?php
+
+defined( 'ABSPATH' ) || die();
+
 chdir(dirname(__FILE__));
 
 $autoload = (int)$argv[1];
@@ -10,10 +13,10 @@ if (!$autoload) {
     $composer = json_decode(file_get_contents('composer.json'), true);
     unset($composer['autoload']);
     unset($composer['require-dev']['squizlabs/php_codesniffer']);
-    file_put_contents('composer.json', json_encode($composer));
+    file_put_contents('composer.json', json_encode($composer, JSON_PRETTY_PRINT));
 }
 
-passthru('composer install', $returnStatus);
+passthru('composer update', $returnStatus);
 if ($returnStatus !== 0) {
     exit(1);
 }
