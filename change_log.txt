@@ -1,7 +1,19 @@
+### 3.0 | 2019-09-04
+- Updated to use the new Stripe Checkout, which supports Apple Pay and Strong Customer Authentication (SCA/PSD2).
+- Added the new [gform_stripe_session_data](https://docs.gravityforms.com/gform_stripe_session_data/) filter to allow modifying the payment data for Stripe Checkout.
+- Added the validation to webhooks signing secret fields.
+
+
+### 2.9 | 2019-08-15
+- Fixed an issue where the incorrect API mode is chosen when authorizing payments.
+- Fixed an issue where form submissions are broken when the Stripe feeds are enabled by conditional logic.
+
+
 ### 2.8 | 2019-08-07
 - Added security enhancements.
 - Added a simpler and more secure way of connecting your Stripe account with Stripe Connect.
 - Added feed-level Stripe Connect. Users can connect to different Stripe accounts in feed settings.
+- Added the [gform_stripe_connect_enabled](https://docs.gravityforms.com/gform_stripe_connect_enabled/) filter to allow the disabling of Stripe Connect in order to use the legacy connection settings.
 - Fixed an issue cancelling subscriptions when using the [gform_stripe_subscription_cancel_at_period_end](https://docs.gravityforms.com/gform_stripe_subscription_cancel_at_period_end) filter with Stripe API version 2018-08-23 or newer.
 - Fixed an issue where the payment amount doesn't display correctly in the Stripe Checkout modal.
 - Fixed an issue when a Stripe Card field is on the page of a multi-page form, users cannot go back to the previous page by clicking on the "Previous" button.
