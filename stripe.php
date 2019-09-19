@@ -3,7 +3,7 @@
  * Plugin Name: Gravity Forms Stripe Add-On
  * Plugin URI: https://www.gravityforms.com
  * Description: Integrates Gravity Forms with Stripe, enabling end users to purchase goods and services through Gravity Forms.
- * Version: 3.0
+ * Version: 3.1
  * Author: rocketgenius
  * Author URI: https://www.rocketgenius.com
  * License: GPL-2.0+
@@ -30,7 +30,7 @@
 
 defined( 'ABSPATH' ) || die();
 
-define( 'GF_STRIPE_VERSION', '3.0' );
+define( 'GF_STRIPE_VERSION', '3.1' );
 
 // If Gravity Forms is loaded, bootstrap the Stripe Add-On.
 add_action( 'gform_loaded', array( 'GF_Stripe_Bootstrap', 'load' ), 5 );
