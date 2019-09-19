@@ -1,6 +1,21 @@
+### 3.1 | 2019-09-18
+- Added the *[gform_stripe_discounted_line_items_name](https://docs.gravityforms.com/gform_stripe_discounted_line_items_name/)* filter to change the default name for the custom line item of a discounted Stripe Checkout payment.
+- Added the *[gform_stripe_fulfillment](https://docs.gravityforms.com/gform_stripe_fulfillment/)* filter to allow performing extra actions when a Stripe Checkout payment is fulfilled (it is charged or the subscription has started).
+- Added support for the webhook event "charge.captured" so when an authorized payment is charged, the entry payment status will change to "Paid".
+- Fixed an issue when some products with $0 unit price are removed from the line items for Stripe Checkout, the session fails to be created.
+- Fixed an issue when the product line items contain one with $0 unit price, Stripe Checkout can't create the session.
+- Fixed an issue where the Entry ID is missing from the payment description with Stripe Checkout.
+- Fixed an issue where GF Coupons discounts aren't applied to Stripe Checkout.
+- Fixed an issue where the merge tags in the subscription name don't work when the payment collection method is Stripe Card field or Credit Card field.
+- Fixed an issue where the confirmation page redirection causes PHP fatal errors when users are redirected back to the site from Stripe Checkout.
+
+
 ### 3.0 | 2019-09-04
 - Updated to use the new Stripe Checkout, which supports Apple Pay and Strong Customer Authentication (SCA/PSD2).
-- Added the new [gform_stripe_session_data](https://docs.gravityforms.com/gform_stripe_session_data/) filter to allow modifying the payment data for Stripe Checkout.
+- Added the *[gform_stripe_session_data](https://docs.gravityforms.com/gform_stripe_session_data/)* filter to allow modifying the payment data for Stripe Checkout.
+- Added the *[gform_stripe_success_url](https://docs.gravityforms.com/gform_stripe_success_url/)* filter to allow changing the URL that users will be sent to after completing the payment on Stripe.
+- Added the *[gform_stripe_cancel_url](https://docs.gravityforms.com/gform_stripe_cancel_url/)* filter to allow changing the URL that users will be sent to after canceling the payment on Stripe.
+- Added the *[gform_stripe_url_port](https://docs.gravityforms.com/gform_stripe_url_port/)* filter to allow changing the URL port if it's not 80.
 - Added the validation to webhooks signing secret fields.
 
 
@@ -13,8 +28,8 @@
 - Added security enhancements.
 - Added a simpler and more secure way of connecting your Stripe account with Stripe Connect.
 - Added feed-level Stripe Connect. Users can connect to different Stripe accounts in feed settings.
-- Added the [gform_stripe_connect_enabled](https://docs.gravityforms.com/gform_stripe_connect_enabled/) filter to allow the disabling of Stripe Connect in order to use the legacy connection settings.
-- Fixed an issue cancelling subscriptions when using the [gform_stripe_subscription_cancel_at_period_end](https://docs.gravityforms.com/gform_stripe_subscription_cancel_at_period_end) filter with Stripe API version 2018-08-23 or newer.
+- Added the *[gform_stripe_connect_enabled](https://docs.gravityforms.com/gform_stripe_connect_enabled/)* filter to allow the disabling of Stripe Connect in order to use the legacy connection settings.
+- Fixed an issue cancelling subscriptions when using the *[gform_stripe_subscription_cancel_at_period_end](https://docs.gravityforms.com/gform_stripe_subscription_cancel_at_period_end)* filter with Stripe API version 2018-08-23 or newer.
 - Fixed an issue where the payment amount doesn't display correctly in the Stripe Checkout modal.
 - Fixed an issue when a Stripe Card field is on the page of a multi-page form, users cannot go back to the previous page by clicking on the "Previous" button.
 
@@ -67,7 +82,7 @@
 
 
 ### 2.3 | 2017-04-28
-- Added the [gform_stripe_charge_pre_create](https://docs.gravityforms.com/gform_stripe_charge_pre_create) filter.
+- Added the *[gform_stripe_charge_pre_create](https://docs.gravityforms.com/gform_stripe_charge_pre_create)* filter.
 - Added translations.
 - Fixed spinner appearing when the previous button on the last page of a multi-page non-AJAX form is clicked.
 - Fixed Stripe.js request being made when the previous button on the last page of a multi-page form is clicked.
@@ -81,11 +96,11 @@
 
 
 ### 2.1 | 2016-09-23
-- Added the [gform_stripe_subscription_cancel_at_period_end](https://docs.gravityforms.com/gform_stripe_subscription_cancel_at_period_end) filter.
-- Added the [gform_stripe_charge_authorization_only](https://docs.gravityforms.com/gform_stripe_charge_authorization_only) filter.
-- Added the [gform_stripe_customer_id](https://docs.gravityforms.com/gform_stripe_customer_id) filter.
+- Added the *[gform_stripe_subscription_cancel_at_period_end](https://docs.gravityforms.com/gform_stripe_subscription_cancel_at_period_end)* filter.
+- Added the *[gform_stripe_charge_authorization_only](https://docs.gravityforms.com/gform_stripe_charge_authorization_only)* filter.
+- Added the *[gform_stripe_customer_id](https://docs.gravityforms.com/gform_stripe_customer_id)* filter.
 - Added logging of error retrieving Stripe Event object.
-- Added the [gform_stripe_customer_after_create](https://docs.gravityforms.com/gform_stripe_customer_after_create) hook allowing custom actions to be performed between the customer being created and subscribed to the plan.
+- Added the *[gform_stripe_customer_after_create](https://docs.gravityforms.com/gform_stripe_customer_after_create)* hook allowing custom actions to be performed between the customer being created and subscribed to the plan.
 - Updated included Stripe API library to latest version.
 - Updated subscription process to define subscription when customer is created if *gform_stripe_customer_after_create* filter is not defined.
 - Updated to only repopulate the card field within the last four digits on successful form submission.

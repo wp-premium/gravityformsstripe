@@ -233,7 +233,10 @@ class GFStripe extends GFPaymentAddOn {
 	 * @since 2.6
 	 */
 	public function pre_init() {
-		$this->maybe_thankyou_page();
+		// For form confirmation redirection, this must be called in `wp`,
+		// or confirmation redirect to a page would throw PHP fatal error.
+		// Run before calling parent method. We don't want to run anything else before displaying thank you page.
+		add_action( 'wp', array( $this, 'maybe_thankyou_page' ), 5 );
 
 		parent::pre_init();
 
@@ -1879,7 +1882,8 @@ class GFStripe extends GFPaymentAddOn {
 
 		if ( $this->is_stripe_checkout_enabled() ) {
 			// Stripe Checkout doesn't require a CC field, so we need to validate card types with a separate function.
-			add_action( 'gform_after_submission', array( $this, 'stripe_checkout_redirect_scripts' ), 10, 2 );
+			// Use priority 50 because users may hook to `gform_after_submission` for other purposes so we run it later.
+			add_action( 'gform_after_submission', array( $this, 'stripe_checkout_redirect_scripts' ), 50, 2 );
 		}
 
 		parent::init();
@@ -2423,16 +2427,60 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		if ( ! $is_subscription ) {
-			foreach ( $submission_data['line_items'] as $k => $line_item ) {
-				$session_data['line_items'][ $k ] = array(
-					'amount'   => $this->get_amount_export( $line_item['unit_price'], rgar( $entry, 'currency' ) ),
-					'currency' => $entry['currency'],
-					'name'     => $line_item['name'],
-					'quantity' => $line_item['quantity'],
-				);
+			// add discounts from the GF Coupon add-on.
+			// Stripe Checkout cannot display our coupon as a negative value,
+			// so we couldn't display the line items when an order contains coupons.
+			$discounts    = rgar( $submission_data, 'discounts' );
+			$discount_amt = 0;
+			if ( is_array( $discounts ) ) {
+				foreach ( $discounts as $discount ) {
+					$discount_full = abs( $discount['unit_price'] ) * $discount['quantity'];
+					$discount_amt += $discount_full;
+				}
+			}
+			if ( $discount_amt > 0 ) {
+				// Use the payment amount from submission data.
+				$payment_amount = rgar( $submission_data, 'payment_amount' );
 
-				if ( ! empty( $line_item['description'] ) ) {
-					$session_data['line_items'][ $k ]['description'] = $line_item['description'];
+				/**
+				 * Filter line item name when there's coupon discounts apply to the payment.
+				 *
+				 * @since 3.0.3
+				 *
+				 * @param string $name            The line item name of the discounted order.
+				 * @param array  $feed            The feed object currently being processed.
+				 * @param array  $submission_data The customer and transaction data.
+				 * @param array  $form            The form object currently being processed.
+				 * @param array  $entry           The entry object currently being processed.
+				 */
+				$line_items_name = apply_filters( 'gform_stripe_discounted_line_items_name', esc_html__( 'Payment with Discounts', 'gravityformsstripe' ), $feed, $submission_data, $form, $entry );
+
+				$session_data['line_items'][] = array(
+					'amount'      => $this->get_amount_export( $payment_amount, rgar( $entry, 'currency' ) ),
+					'currency'    => $entry['currency'],
+					'name'        => $line_items_name,
+					'quantity'    => 1,
+					'description' => $this->get_payment_description( $entry, $submission_data, $feed ),
+				);
+			} else {
+				foreach ( $submission_data['line_items'] as $line_item ) {
+					$unit_price = $line_item['unit_price'];
+
+					// Stripe Checkout doesn't allow 0 or negative price.
+					if ( $unit_price > 0 ) {
+						$data = array(
+							'amount'   => $this->get_amount_export( $unit_price, rgar( $entry, 'currency' ) ),
+							'currency' => $entry['currency'],
+							'name'     => $line_item['name'],
+							'quantity' => $line_item['quantity'],
+						);
+
+						if ( ! empty( $line_item['description'] ) ) {
+							$data['description'] = $line_item['description'];
+						}
+
+						$session_data['line_items'][] = $data;
+					}
 				}
 			}
 
@@ -2525,6 +2573,8 @@ class GFStripe extends GFPaymentAddOn {
 		 */
 		$session_data = apply_filters( 'gform_stripe_session_data', $session_data, $feed, $submission_data, $form, $entry );
 
+		$this->log_debug( __METHOD__ . '(): Session to be created => ' . print_r( $session_data, true ) );
+
 		try {
 			$session    = \Stripe\Checkout\Session::create( $session_data );
 			$session_id = rgar( $session, 'id' );
@@ -2564,7 +2614,7 @@ class GFStripe extends GFPaymentAddOn {
 	public function complete_authorization( &$entry, $action ) {
 		if ( rgar( $action, 'session_id' ) ) {
 			// Do not complete authorization at this stage since users haven't paid.
-			$this->log_debug( __METHOD__ . '(): Stripe session was just created, the payment hasn\'t been authorized yet. Mark it as processing.' );
+			$this->log_debug( __METHOD__ . '(): Stripe session will be created, but the payment hasn\'t been authorized yet. Mark it as processing.' );
 			GFAPI::update_entry_property( $entry['id'], 'payment_status', 'Processing' );
 
 			return true;
@@ -2717,6 +2767,8 @@ class GFStripe extends GFPaymentAddOn {
 	public function capture( $auth, $feed, $submission_data, $form, $entry ) {
 		if ( $this->is_stripe_checkout_enabled() ) {
 			gform_update_meta( $entry['id'], 'stripe_session_id', $auth['session_id'] );
+			// Cache the submission data so we can use it in complete_checkout_session().
+			gform_update_meta( $entry['id'], 'submission_data', $submission_data );
 
 			// return empty details for the new Stripe Checkout.
 			return array();
@@ -2948,6 +3000,9 @@ class GFStripe extends GFPaymentAddOn {
 		$trial_period_days     = rgars( $feed, 'meta/trialPeriod' ) ? $submission_data['trial'] : null;
 		$currency              = rgar( $entry, 'currency' );
 
+		if ( rgars( $feed, 'meta/subscription_name' ) ) {
+			$feed['meta']['subscription_name'] = GFCommon::replace_variables( rgars( $feed, 'meta/subscription_name' ), $form, $entry, false, true, true, 'text' );
+		}
 		// Get Stripe plan for feed.
 		$plan_id = $this->get_subscription_plan_id( $feed, $payment_amount, $trial_period_days, $currency );
 		$plan    = $this->get_plan( $plan_id );
@@ -3167,23 +3222,30 @@ class GFStripe extends GFPaymentAddOn {
 
 				$amount_formatted = GFCommon::to_money( $action['amount'], $entry['currency'] );
 				$action['note']  .= sprintf( __( 'Subscription payment has been paid. Amount: %s. Subscription Id: %s', 'gravityformsstripe' ), $amount_formatted, $action['subscription_id'] );
+
+				if ( rgar( $subscription, 'status' ) === 'active' ) {
+					// Run gform_stripe_fulfillment hook for supporting delayed payments.
+					$this->checkout_fulfillment( $session, $entry, $feed, $form );
+				}
 			}
 		} else {
-			if ( $payment_status !== 'Authorized' && $payment_status !== 'Paid' ) {
+			if ( $payment_status !== 'Paid' ) {
+				$submission_data       = gform_get_meta( $entry['id'], 'submission_data' );
 				$payment_intent        = rgar( $session, 'payment_intent' );
 				$payment_intent_object = \Stripe\PaymentIntent::retrieve( $payment_intent );
-
-				// complete authorization.
-				$authorization = array(
+				$authorization         = array(
 					'is_authorized'  => true,
 					'transaction_id' => $payment_intent,
 					'amount'         => $this->get_amount_import( rgars( $payment_intent_object, 'amount_received' ), $entry['currency'] ),
 				);
-				$this->process_capture( $authorization, $feed, array(), $form, $entry );
-			}
 
-			if ( $payment_status !== 'Paid' ) {
-				// if authorization_only = true, status will be 'requires_capture'.
+				// complete authorization.
+				if ( $payment_status !== 'Authorized' ) {
+					$this->process_capture( $authorization, $feed, $submission_data, $form, $entry );
+				}
+
+				// if authorization_only = true, status will be 'requires_capture',
+				// so if the payment intent status is succeeded, we can mark the entry as Paid.
 				if ( rgars( $payment_intent_object, 'status' ) === 'succeeded' ) {
 					$payment_method = rgars( $payment_intent_object, 'charges/data/0/payment_method_details/card/brand' );
 
@@ -3194,7 +3256,23 @@ class GFStripe extends GFPaymentAddOn {
 						'payment_method' => $payment_method,
 					);
 					// Mark payment as completed (paid).
-					$this->process_capture( $authorization, $feed, array(), $form, $entry );
+					$this->process_capture( $authorization, $feed, $submission_data, $form, $entry );
+
+					// Run gform_stripe_fulfillment hook for supporting delayed payments.
+					$this->checkout_fulfillment( $session, $entry, $feed, $form );
+				}
+
+				// Update payment intent for description to add Entry ID.
+				// Because the entry ID wasn't available when checkout session was created.
+				if ( ! empty( $submission_data ) ) {
+					\Stripe\PaymentIntent::update(
+						$payment_intent,
+						array(
+							'description' => $this->get_payment_description( $entry, $submission_data, $feed ),
+						)
+					);
+
+					gform_delete_meta( $entry['id'], 'submission_data' );
 				}
 			}
 
@@ -3202,6 +3280,46 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		return $action;
+	}
+
+	/**
+	 * Run functions that hook to gform_stripe_fulfillment.
+	 *
+	 * @since 3.1
+	 *
+	 * @param array $session The session object.
+	 * @param array $entry   The entry object.
+	 * @param array $feed    The feed object.
+	 * @param array $form    The form object.
+	 */
+	public function checkout_fulfillment( $session, $entry, $feed, $form ) {
+
+		if ( $subscription_id = rgar( $session, 'subscription' ) ) {
+			$transaction_id = $subscription_id;
+		} else {
+			$transaction_id = rgar( $session, 'payment_intent' );
+		}
+
+		if ( method_exists( $this, 'trigger_payment_delayed_feeds' ) ) {
+			$this->trigger_payment_delayed_feeds( $transaction_id, $feed, $entry, $form );
+		}
+
+		if ( has_filter( 'gform_stripe_fulfillment' ) ) {
+			// Log that filter will be executed.
+			$this->log_debug( __METHOD__ . '(): Executing functions hooked to gform_stripe_fulfillment.' );
+
+			/**
+			 * Allow custom actions to be performed after a checkout session is completed.
+			 *
+			 * @since 3.1
+			 *
+			 * @param array $session The session object.
+			 * @param array $entry   The entry object.
+			 * @param array $feed    The feed object.
+			 * @param array $form    The form object.
+			 */
+			do_action( 'gform_stripe_fulfillment', $session, $entry, $feed, $form );
+		}
 	}
 
 	// # STRIPE HELPER FUNCTIONS ---------------------------------------------------------------------------------------
@@ -3837,6 +3955,42 @@ class GFStripe extends GFPaymentAddOn {
 
 				break;
 
+			case 'charge.captured':
+			case 'invoice.created':
+				if ( $this->is_stripe_checkout_enabled() ) {
+					$action['transaction_id'] = rgars( $event, 'data/object/payment_intent' );
+					$entry_id                 = $this->get_entry_by_transaction_id( $action['transaction_id'] );
+
+					if ( $entry_id ) {
+						$entry          = GFAPI::get_entry( $entry_id );
+						$payment_status = rgar( $entry, 'payment_status' );
+
+						if ( ( $type === 'charge.captured' && $payment_status === 'Authorized' ) || ( $type === 'invoice.created' && $payment_status === 'Active' ) ) {
+							$form = GFAPI::get_form( $entry['form_id'] );
+							$feed = $this->get_payment_feed( $entry, $form );
+
+							// Get session.
+							$session_id = gform_get_meta( $entry_id, 'stripe_session_id' );
+							$session    = \Stripe\Checkout\Session::retrieve( $session_id );
+
+							if ( $payment_status === 'Authorized' ) {
+								// Mark authorized payment as Paid.
+								$this->log_debug( __METHOD__ . '(): Charge has been captured for entry #' . $entry_id . '. Mark is as paid.' );
+
+								$action['entry_id'] = $entry_id;
+								$action['type']     = 'complete_payment';
+								$action['amount']   = $this->get_amount_import( rgars( $event, 'data/object/amount' ), $entry['currency'] );
+							} else {
+								$action['abort_callback'] = true;
+							}
+
+							// Run gform_stripe_fulfillment hook.
+							$this->checkout_fulfillment( $session, $entry, $feed, $form );
+						}
+					}
+				}
+				break;
+
 			case 'customer.subscription.deleted':
 
 				$action['subscription_id'] = rgars( $event, 'data/object/id' );
@@ -3868,22 +4022,29 @@ class GFStripe extends GFPaymentAddOn {
 
 				$entry = GFAPI::get_entry( $entry_id );
 
-				$payment_intent           = rgars( $event, 'data/object/payment_intent' );
-				$action['transaction_id'] = empty( $payment_intent ) ? rgars( $event, 'data/object/charge' ) : $payment_intent;
-				$action['entry_id']       = $entry_id;
-				$action['type']           = 'add_subscription_payment';
-				$action['amount']         = $this->get_amount_import( rgars( $event, 'data/object/amount_due' ), $entry['currency'] );
+				// If it's the first invoice and payment_status is active, it means the subscription has started
+				// when checkout session completed. So don't set action to prevent duplicate notes.
+				$number = explode( '-', rgars( $event, 'data/object/number' ) );
+				if ( $this->is_stripe_checkout_enabled() && rgar( $entry, 'payment_status' ) === 'Active' && $number[1] === '0001' ) {
+					$action['abort_callback'] = true;
+				} else {
+					$payment_intent           = rgars( $event, 'data/object/payment_intent' );
+					$action['transaction_id'] = empty( $payment_intent ) ? rgars( $event, 'data/object/charge' ) : $payment_intent;
+					$action['entry_id']       = $entry_id;
+					$action['type']           = 'add_subscription_payment';
+					$action['amount']         = $this->get_amount_import( rgars( $event, 'data/object/amount_due' ), $entry['currency'] );
 
-				$action['note'] = '';
+					$action['note'] = '';
 
-				// Get starting balance, assume this balance represents a setup fee or trial.
-				$starting_balance = $this->get_amount_import( rgars( $event, 'data/object/starting_balance' ), $entry['currency'] );
-				if ( $starting_balance > 0 ) {
-					$action['note'] = $this->get_captured_payment_note( $action['entry_id'] ) . ' ';
+					// Get starting balance, assume this balance represents a setup fee or trial.
+					$starting_balance = $this->get_amount_import( rgars( $event, 'data/object/starting_balance' ), $entry['currency'] );
+					if ( $starting_balance > 0 ) {
+						$action['note'] = $this->get_captured_payment_note( $action['entry_id'] ) . ' ';
+					}
+
+					$amount_formatted = GFCommon::to_money( $action['amount'], $entry['currency'] );
+					$action['note']  .= sprintf( __( 'Subscription payment has been paid. Amount: %s. Subscription Id: %s', 'gravityformsstripe' ), $amount_formatted, $action['subscription_id'] );
 				}
-
-				$amount_formatted = GFCommon::to_money( $action['amount'], $entry['currency'] );
-				$action['note']   .= sprintf( __( 'Subscription payment has been paid. Amount: %s. Subscription Id: %s', 'gravityformsstripe' ), $amount_formatted, $action['subscription_id'] );
 
 				break;
 
@@ -5075,4 +5236,26 @@ class GFStripe extends GFPaymentAddOn {
 		// Add message.
 		GFCommon::add_dismissible_message( $message, 'gravityformsstripe_upgrade_30', 'warning', $this->_capabilities_form_settings, true, 'site-wide' );
 	}
+
+	/**
+	 * Get post payment actions config.
+	 *
+	 * @since 3.1
+	 *
+	 * @param string $feed_slug The feed slug.
+	 *
+	 * @return array
+	 */
+	public function get_post_payment_actions_config( $feed_slug ) {
+		// Support post payment action only for Stripe Checkout.
+		if ( ! gf_stripe()->is_stripe_checkout_enabled() || ( gf_stripe()->has_stripe_card_field() || gf_stripe()->has_credit_card_field( $this->get_current_form() ) ) ) {
+			return array();
+		}
+
+		return array(
+			'position' => 'before',
+			'setting'  => 'conditionalLogic',
+		);
+	}
+
 }
