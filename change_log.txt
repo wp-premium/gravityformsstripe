@@ -1,3 +1,15 @@
+### 3.3 | 2019-12-18
+- Added security enhancements.
+- Fixed a PHP fatal error which can occur if the customer specified by the gform_stripe_customer_id filter can't be retrieved.
+- Fixed an issue where the Checkout session could fail to be created when the gform_stripe_customer_id filter returns a valid id and the customer email is supplied by the feed field mapping.
+- Fixed an issue where PHP fatal error is thrown when Stripe account is deleting test data.
+
+
+### 3.2 | 2019-09-25
+- Fixed an issue where delayed feeds aren't triggered when a subscription trial has ended.
+- Fixed an issue which can prevent the redirect to Stripe Checkout occurring on some sites.
+
+
 ### 3.1 | 2019-09-18
 - Added the *[gform_stripe_discounted_line_items_name](https://docs.gravityforms.com/gform_stripe_discounted_line_items_name/)* filter to change the default name for the custom line item of a discounted Stripe Checkout payment.
 - Added the *[gform_stripe_fulfillment](https://docs.gravityforms.com/gform_stripe_fulfillment/)* filter to allow performing extra actions when a Stripe Checkout payment is fulfilled (it is charged or the subscription has started).
