@@ -407,6 +407,7 @@ class GFStripe extends GFPaymentAddOn {
 	 * Handler for the gf_validate_secret_key AJAX request.
 	 *
 	 * @since  Unknown
+	 * @since  3.3 Fix PHP fatal error thrown when deleting test data.
 	 * @access public
 	 *
 	 * @used-by GFStripe::init_ajax()
@@ -440,7 +441,7 @@ class GFStripe extends GFPaymentAddOn {
 			// Attempt to retrieve account details.
 			\Stripe\Account::retrieve();
 
-		} catch ( \Stripe\Error\Authentication $e ) {
+		} catch ( \Exception $e ) {
 
 			// Set validity state to false.
 			$is_valid = false;
@@ -809,9 +810,11 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		// Get authentication URL.
-		$auth_url = add_query_arg( array(
+		$license_key = GFCommon::get_key();
+		$auth_url    = add_query_arg( array(
 			'mode'        => $api_mode,
 			'redirect_to' => rawurlencode( $settings_url ),
+			'license'     => $license_key,
 		), $this->get_gravity_api_url( '/auth/stripe' ) );
 
 		// Create connect button markup.
@@ -1102,7 +1105,10 @@ class GFStripe extends GFPaymentAddOn {
 
 
 	/**
-	 * Decides wether or not the notice for deprecated authentication message should be displayed
+	 * Decides whether or not the notice for deprecated authentication message should be displayed
+	 *
+	 * @since 2.8
+	 * @since 3.3 Fix how we define $is_valid.
 	 *
 	 * @return bool Returns true if the re-authentication message/notice should be displayed. Returns false otherwise
 	 */
@@ -1111,7 +1117,7 @@ class GFStripe extends GFPaymentAddOn {
 		$settings   = $this->get_plugin_settings();
 		$api_mode   = $this->get_api_mode( $settings );
 		$auth_token = $this->get_auth_token( $settings, $api_mode );
-		$is_valid   = $this->is_stripe_auth_valid( $settings, $api_mode );
+		$is_valid   = rgar( $settings, "{$api_mode}_publishable_key_is_valid" ) && rgar( $settings, "{$api_mode}_secret_key_is_valid" );
 
 		return $is_valid && empty( $auth_token ) && $this->is_stripe_connect_enabled();
 	}
@@ -1883,7 +1889,7 @@ class GFStripe extends GFPaymentAddOn {
 		if ( $this->is_stripe_checkout_enabled() ) {
 			// Stripe Checkout doesn't require a CC field, so we need to validate card types with a separate function.
 			// Use priority 50 because users may hook to `gform_after_submission` for other purposes so we run it later.
-			add_action( 'gform_after_submission', array( $this, 'stripe_checkout_redirect_scripts' ), 50, 2 );
+			add_action( 'gform_after_submission', array( $this, 'stripe_checkout_redirect_scripts' ), 110, 2 );
 		}
 
 		parent::init();
@@ -2572,6 +2578,12 @@ class GFStripe extends GFPaymentAddOn {
 		 * @param array $entry           The entry object currently being processed.
 		 */
 		$session_data = apply_filters( 'gform_stripe_session_data', $session_data, $feed, $submission_data, $form, $entry );
+
+		// Remove 'customer_email' if 'customer' is defined to prevent a session creation failure.
+		if ( isset( $session_data['customer'] ) && isset( $session_data['customer_email'] ) ) {
+			$this->log_debug( __METHOD__ . '(): customer is defined; removing incompatible customer_email property.' );
+			unset( $session_data['customer_email'] );
+		}
 
 		$this->log_debug( __METHOD__ . '(): Session to be created => ' . print_r( $session_data, true ) );
 
@@ -3364,9 +3376,11 @@ class GFStripe extends GFPaymentAddOn {
 
 		if ( $customer_id ) {
 			$this->log_debug( __METHOD__ . '(): Retrieving customer id => ' . print_r( $customer_id, 1 ) );
-			$customer = \Stripe\Customer::retrieve( $customer_id );
-
-			return $customer;
+			try {
+				return \Stripe\Customer::retrieve( $customer_id );
+			} catch ( \Exception $e ) {
+				$this->log_error( __METHOD__ . '(): Unable to get customer; ' . $e->getMessage() );
+			}
 		}
 
 		return false;
@@ -3774,6 +3788,8 @@ class GFStripe extends GFPaymentAddOn {
 			$mode     = $this->get_api_mode( $settings );
 		}
 
+		$this->log_debug( sprintf( '%s(): Initializing Stripe API for %s mode.', __METHOD__, $mode ) );
+
 		// If Stripe class does not exist, load Stripe API library.
 		if ( ! class_exists( '\Stripe\Stripe' ) ) {
 			require_once( $this->get_base_path() . '/includes/autoload.php' );
@@ -3956,16 +3972,16 @@ class GFStripe extends GFPaymentAddOn {
 				break;
 
 			case 'charge.captured':
-			case 'invoice.created':
 				if ( $this->is_stripe_checkout_enabled() ) {
 					$action['transaction_id'] = rgars( $event, 'data/object/payment_intent' );
-					$entry_id                 = $this->get_entry_by_transaction_id( $action['transaction_id'] );
+
+					$entry_id = $this->get_entry_by_transaction_id( $action['transaction_id'] );
 
 					if ( $entry_id ) {
 						$entry          = GFAPI::get_entry( $entry_id );
 						$payment_status = rgar( $entry, 'payment_status' );
 
-						if ( ( $type === 'charge.captured' && $payment_status === 'Authorized' ) || ( $type === 'invoice.created' && $payment_status === 'Active' ) ) {
+						if ( $payment_status === 'Authorized' ) {
 							$form = GFAPI::get_form( $entry['form_id'] );
 							$feed = $this->get_payment_feed( $entry, $form );
 
@@ -3973,16 +3989,12 @@ class GFStripe extends GFPaymentAddOn {
 							$session_id = gform_get_meta( $entry_id, 'stripe_session_id' );
 							$session    = \Stripe\Checkout\Session::retrieve( $session_id );
 
-							if ( $payment_status === 'Authorized' ) {
-								// Mark authorized payment as Paid.
-								$this->log_debug( __METHOD__ . '(): Charge has been captured for entry #' . $entry_id . '. Mark is as paid.' );
+							// Mark authorized payment as Paid.
+							$this->log_debug( __METHOD__ . '(): Charge has been captured for entry #' . $entry_id . '. Mark is as paid.' );
 
-								$action['entry_id'] = $entry_id;
-								$action['type']     = 'complete_payment';
-								$action['amount']   = $this->get_amount_import( rgars( $event, 'data/object/amount' ), $entry['currency'] );
-							} else {
-								$action['abort_callback'] = true;
-							}
+							$action['entry_id'] = $entry_id;
+							$action['type']     = 'complete_payment';
+							$action['amount']   = $this->get_amount_import( rgars( $event, 'data/object/amount' ), $entry['currency'] );
 
 							// Run gform_stripe_fulfillment hook.
 							$this->checkout_fulfillment( $session, $entry, $feed, $form );
@@ -4022,7 +4034,7 @@ class GFStripe extends GFPaymentAddOn {
 
 				$entry = GFAPI::get_entry( $entry_id );
 
-				// If it's the first invoice and payment_status is active, it means the subscription has started
+				// If it's the first invoice and payment_status is active, it means the subscription has just started
 				// when checkout session completed. So don't set action to prevent duplicate notes.
 				$number = explode( '-', rgars( $event, 'data/object/number' ) );
 				if ( $this->is_stripe_checkout_enabled() && rgar( $entry, 'payment_status' ) === 'Active' && $number[1] === '0001' ) {
@@ -4044,6 +4056,24 @@ class GFStripe extends GFPaymentAddOn {
 
 					$amount_formatted = GFCommon::to_money( $action['amount'], $entry['currency'] );
 					$action['note']  .= sprintf( __( 'Subscription payment has been paid. Amount: %s. Subscription Id: %s', 'gravityformsstripe' ), $amount_formatted, $action['subscription_id'] );
+
+					// Detect the 0002 invoice for subscriptions with trial just ended.
+					if ( $this->is_stripe_checkout_enabled() && rgar( $entry, 'payment_status' ) === 'Active' && $number[1] === '0002' ) {
+						$subscription_obj = \Stripe\Subscription::retrieve( $action['subscription_id'] );
+						$trial_end        = rgar( $subscription_obj, 'trial_end' );
+						// After the trial has ended, the invoice created right away will be #0002.
+						if ( $trial_end && $trial_end <= time() ) {
+							$form = GFAPI::get_form( $entry['form_id'] );
+							$feed = $this->get_payment_feed( $entry, $form );
+
+							// Get session.
+							$session_id = gform_get_meta( $entry_id, 'stripe_session_id' );
+							$session    = \Stripe\Checkout\Session::retrieve( $session_id );
+
+							// fulfill delayed feeds.
+							$this->checkout_fulfillment( $session, $entry, $feed, $form );
+						}
+					}
 				}
 
 				break;
@@ -4490,6 +4520,7 @@ class GFStripe extends GFPaymentAddOn {
 	 * Check if Stripe authentication is valid.
 	 *
 	 * @since 2.8
+	 * @since 3.3 Fix PHP fatal error thrown when deleting test data.
 	 *
 	 * @param array  $settings Settings.
 	 * @param string $mode API mode.
@@ -4506,7 +4537,7 @@ class GFStripe extends GFPaymentAddOn {
 				$this->get_stripe_account( $settings, $mode );
 
 				return true;
-			} catch ( Stripe\Error\Authentication $e ) {
+			} catch ( \Exception $e ) {
 				// Log error.
 				$this->log_error( sprintf( '%s(): Unable to get Stripe account info; %s', __METHOD__, $e->getMessage() ) );
 			}
@@ -4848,14 +4879,21 @@ class GFStripe extends GFPaymentAddOn {
 	 * @param array $form  The form object.
 	 */
 	public function stripe_checkout_redirect_scripts( $entry, $form ) {
+		if ( ! $this->is_payment_gateway ) {
+			return;
+		}
+
 		$session_id = gform_get_meta( $entry['id'], 'stripe_session_id' );
-		if ( $this->has_feed( $form['id'], true ) && ! empty( $session_id ) ) {
-			$feed = $this->get_payment_feed( $entry, $form );
+		$feed       = $this->current_feed;
+
+		if ( ! empty( $session_id ) && ! empty( $feed ) ) {
 			if ( $this->is_feed_stripe_connect_enabled( $feed['id'] ) ) {
 				$settings = $feed['meta'];
 			} else {
 				$settings = $this->get_plugin_settings();
 			}
+
+			$this->log_debug( __METHOD__ . "(): Outputting scripts for entry #{$entry['id']} for session {$session_id}." );
 			?>
             <script src="https://js.stripe.com/v3"></script>
             <script>
@@ -5196,6 +5234,21 @@ class GFStripe extends GFPaymentAddOn {
 	 * @param string $previous_version Previous version number.
 	 */
 	public function upgrade( $previous_version ) {
+
+		$this->handle_upgrade_3( $previous_version );
+		$this->handle_upgrade_3_2_3( $previous_version );
+
+	}
+
+	/**
+	 * Handle upgrading to 3.0; introduction of SCA.
+	 *
+	 * @since 3.2.3
+	 *
+	 * @param string $previous_version Previous version number.
+	 */
+	public function handle_upgrade_3( $previous_version ) {
+
 		// Determine if previous version is before SCA upgrade.
 		$previous_is_pre_sca = ! empty( $previous_version ) && version_compare( $previous_version, '3.0', '<' );
 
@@ -5235,6 +5288,59 @@ class GFStripe extends GFPaymentAddOn {
 
 		// Add message.
 		GFCommon::add_dismissible_message( $message, 'gravityformsstripe_upgrade_30', 'warning', $this->_capabilities_form_settings, true, 'site-wide' );
+
+	}
+
+	/**
+	 * Handle upgrade to 3.2.3; deletes passwords that GF Stripe 3.2 prevented from being deleted.
+	 *
+	 * @since 3.2.3
+	 *
+	 * @param string $previous_version Previous version number.
+	 */
+	public function handle_upgrade_3_2_3( $previous_version ) {
+		global $wpdb;
+
+		if ( version_compare( $previous_version, '3.2.3', '>=' ) || version_compare( $previous_version, '3.2', '<' ) ) {
+			return;
+		}
+
+		$feeds           = $this->get_feeds();
+		$processed_forms = array();
+
+		foreach ( $feeds as $feed ) {
+
+			if ( in_array( $feed['form_id'], $processed_forms ) ) {
+				continue;
+			} else {
+				$processed_forms[] = $feed['form_id'];
+			}
+
+			$form            = GFAPI::get_form( $feed['form_id'] );
+			$password_fields = GFAPI::get_fields_by_type( $form, 'password' );
+			if ( empty( $password_fields ) ) {
+				continue;
+			}
+
+			$password_field_ids = array_map( 'intval', wp_list_pluck( $password_fields, 'id' ) );
+			$sql_field_ids      = implode( ',', $password_field_ids );
+			$form_id            = (int) $form['id'];
+
+			$sql = $wpdb->prepare( "
+				DELETE FROM {$wpdb->prefix}gf_entry_meta 
+				WHERE form_id = %d
+				AND meta_key IN( {$sql_field_ids} )",
+				$form_id
+			);
+
+			$wpdb->query( $sql );
+
+			$result = $wpdb->query( $sql );
+
+			$this->log_debug( sprintf( '%s: Deleted %d passwords.', __FUNCTION__, (int) $result ) );
+
+		}
+
 	}
 
 	/**
