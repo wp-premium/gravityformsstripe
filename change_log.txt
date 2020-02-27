@@ -1,3 +1,9 @@
+### 3.4 | 2020-02-19
+- Added security enhancements.
+- Added support for Strong Customer Authentication (SCA) to the Stripe Card field (Stripe Elements) payment collection method.
+- Deprecated the Gravity Forms Credit Card Field.
+- Fixed an issue with Stripe feeds conflicting with feeds from other payment add-ons in the browser.
+
 ### 3.3 | 2019-12-18
 - Added security enhancements.
 - Fixed a PHP fatal error which can occur if the customer specified by the gform_stripe_customer_id filter can't be retrieved.
