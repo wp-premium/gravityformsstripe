@@ -15,15 +15,32 @@ window.GFStripe = null;
 
 		this.form = null;
 
+		this.activeFeed = null;
+
+		this.GFCCField = null;
+
+		this.stripeResponse = null;
+
+		this.hasPaymentIntent = false;
+
 		this.init = function () {
 
-			// Stripe Checkout doesn't required a CC field on page
-			if (!this.isCreditCardOnPage() && this.stripe_payment !== 'checkout')
-				return;
+			if (!this.isCreditCardOnPage()) {
+				if (this.stripe_payment === 'stripe.js' || (this.stripe_payment === 'elements' && ! $('#gf_stripe_response').length)) {
+					return;
+				}
+			}
 
-			var GFStripeObj = this, activeFeed = null, feedActivated = false, hidePostalCode = false, apiKey = GFStripeObj.apiKey;
+			var GFStripeObj = this, activeFeed = null, feedActivated = false, hidePostalCode = false, apiKey = this.apiKey;
+
+			this.form = $('#gform_' + this.formId);
+			this.GFCCField = $('#input_' + this.formId + '_' + this.ccFieldId + '_1');
 
 			gform.addAction('gform_frontend_feeds_evaluated', function (feeds, formId) {
+				if ( formId !== GFStripeObj.formId ) {
+					return;
+				}
+
 				activeFeed = null;
 				feedActivated = false;
 				hidePostalCode = false;
@@ -31,8 +48,17 @@ window.GFStripe = null;
 				for (var i = 0; i < Object.keys(feeds).length; i++) {
 					if (feeds[i].addonSlug === 'gravityformsstripe' && feeds[i].isActivated) {
 						feedActivated = true;
-						activeFeed = GFStripeObj.feeds[i];
+
+						for (var j = 0; j < Object.keys(GFStripeObj.feeds).length; j++) {
+							if (GFStripeObj.feeds[j].feedId === feeds[i].feedId) {
+								activeFeed = GFStripeObj.feeds[j];
+
+								break;
+							}
+						}
+
 						apiKey = activeFeed.hasOwnProperty('apiKey') ? activeFeed.apiKey : GFStripeObj.apiKey;
+						GFStripeObj.activeFeed = activeFeed;
 
 						switch (GFStripeObj.stripe_payment) {
 							case 'elements':
@@ -48,8 +74,8 @@ window.GFStripe = null;
 								}
 
 								// Clear card field errors before initiate it.
-								if ($(GFCCFieldId).next('.validation_message').length) {
-									$(GFCCFieldId).next('.validation_message').html('');
+								if (GFStripeObj.GFCCField.next('.validation_message').length) {
+									GFStripeObj.GFCCField.next('.validation_message').html('');
 								}
 
 								card = elements.create(
@@ -61,11 +87,22 @@ window.GFStripe = null;
 									}
 								);
 
-								card.mount(GFCCFieldId);
+								if ( $('.gform_stripe_requires_action').length ) {
+									if ( $('.ginput_container_creditcard > div').length === 2 ) {
+										// Cardholder name enabled.
+										$('.ginput_container_creditcard > div:last').hide();
+										$('.ginput_container_creditcard > div:first').html('<p><strong>' + gforms_stripe_frontend_strings.requires_action + '</strong></p>');
+									} else {
+										$('.ginput_container_creditcard').html('<p><strong>' + gforms_stripe_frontend_strings.requires_action + '</strong></p>');
+									}
+									GFStripeObj.scaActionHandler(stripe, formId);
+								} else {
+									card.mount(GFStripeObj.GFCCField.selector);
 
-								card.on('change', function (event) {
-									GFStripeObj.displayStripeCardError(event);
-								});
+									card.on('change', function (event) {
+										GFStripeObj.displayStripeCardError(event);
+									});
+								}
 								break;
 							case 'stripe.js':
 								Stripe.setPublishableKey(apiKey);
@@ -82,39 +119,42 @@ window.GFStripe = null;
 							card.destroy();
 						}
 
-						if (!$(GFCCFieldId).next('.validation_message').length) {
-							$(GFCCFieldId).after('<div class="gfield_description validation_message"></div>');
+						if (!GFStripeObj.GFCCField.next('.validation_message').length) {
+							GFStripeObj.GFCCField.after('<div class="gfield_description validation_message"></div>');
 						}
 
-						var cardErrors = $(GFCCFieldId).next('.validation_message');
+						var cardErrors = GFStripeObj.GFCCField.next('.validation_message');
 						cardErrors.html( gforms_stripe_frontend_strings.no_active_frontend_feed );
 					}
 
 					// remove Stripe fields and form status when Stripe feed deactivated
-					GFStripeObj.form = $('#gform_' + formId);
 					GFStripeObj.resetStripeStatus(GFStripeObj.form, formId, GFStripeObj.isLastPage());
 					apiKey = GFStripeObj.apiKey;
+					GFStripeObj.activeFeed = null;
 				}
 			});
 
-			switch (GFStripeObj.stripe_payment) {
+			switch (this.stripe_payment) {
 				case 'elements':
 					var stripe = null,
 						elements = null,
-						GFCCFieldId = '#input_' + GFStripeObj.formId + '_' + GFStripeObj.ccFieldId + '_1',
 						card = null,
-						skipTokenCreation = false;
+						skipElementsHandler = false;
+
+					if ( $('#gf_stripe_response').length ) {
+						this.stripeResponse = JSON.parse($('#gf_stripe_response').val());
+
+						if ( this.stripeResponse.hasOwnProperty('client_secret') ) {
+							this.hasPaymentIntent = true;
+						}
+					}
 					break;
 			}
 
 			// bind Stripe functionality to submit event
-			$('#gform_' + this.formId).submit(function (event) {
-				// feed not activated
-				if (!feedActivated) {
-					return;
-				}
-				// by checking if $(GFCCFieldId) is hidden, we can continue to the next page in a multi-page form
-				if ($(this).data('gfstripesubmitting') || $('#gform_save_' + GFStripeObj.formId).val() == 1 || (!GFStripeObj.isLastPage() && 'elements' !== GFStripeObj.stripe_payment) || gformIsHidden($(GFCCFieldId))) {
+			$('#gform_' + this.formId).on('submit', function (event) {
+				// by checking if GFCCField is hidden, we can continue to the next page in a multi-page form
+				if (!feedActivated || $(this).data('gfstripesubmitting') || $('#gform_save_' + GFStripeObj.formId).val() == 1 || (!GFStripeObj.isLastPage() && 'elements' !== GFStripeObj.stripe_payment) || gformIsHidden(GFStripeObj.GFCCField) || GFStripeObj.maybeHitRateLimits()) {
 					return;
 				} else {
 					event.preventDefault();
@@ -126,35 +166,39 @@ window.GFStripe = null;
 					case 'elements':
 						GFStripeObj.form = $(this);
 
+						if ( activeFeed.paymentAmount === 'form_total' ) {
+							// Set priority to 51 so it will be triggered after the coupons add-on
+							gform.addFilter('gform_product_total', function (total, formId) {
+								window['gform_stripe_amount_' + formId] = total;
+								return total;
+							}, 51);
+
+							gformCalculateTotalPrice(formId);
+						}
+
+						GFStripeObj.updatePaymentAmount();
+
 						// don't create card token if clicking on the Previous button.
 						var sourcePage = parseInt($('#gform_source_page_number_' + GFStripeObj.formId).val(), 10),
 						    targetPage = parseInt($('#gform_target_page_number_' + GFStripeObj.formId).val(), 10);
-						if (sourcePage > targetPage && targetPage !== 0) {
-							skipTokenCreation = true;
+						if ((sourcePage > targetPage && targetPage !== 0) || window['gform_stripe_amount_' + GFStripeObj.formId] === 0) {
+							skipElementsHandler = true;
 						}
 
-						if ((GFStripeObj.isLastPage() && !GFStripeObj.isCreditCardOnPage()) || gformIsHidden($(GFCCFieldId)) || skipTokenCreation) {
+						if ((GFStripeObj.isLastPage() && !GFStripeObj.isCreditCardOnPage()) || gformIsHidden(GFStripeObj.GFCCField) || skipElementsHandler) {
 							$(this).submit();
 							return;
 						}
 
-						var cardholderName = $( '#input_' + GFStripeObj.formId + '_' + GFStripeObj.ccFieldId + '_5' ).val();
-						var tokenData = {
-							name: cardholderName,
-							address_line1: GFMergeTag.replaceMergeTags(GFStripeObj.formId, GFStripeObj.getBillingAddressMergeTag(activeFeed.address_line1)),
-							address_line2: GFMergeTag.replaceMergeTags(GFStripeObj.formId, GFStripeObj.getBillingAddressMergeTag(activeFeed.address_line2)),
-							address_city: GFMergeTag.replaceMergeTags(GFStripeObj.formId, GFStripeObj.getBillingAddressMergeTag(activeFeed.address_city)),
-							address_state: GFMergeTag.replaceMergeTags(GFStripeObj.formId, GFStripeObj.getBillingAddressMergeTag(activeFeed.address_state)),
-							address_zip: GFMergeTag.replaceMergeTags(GFStripeObj.formId, GFStripeObj.getBillingAddressMergeTag(activeFeed.address_zip)),
-							address_country: GFMergeTag.replaceMergeTags(GFStripeObj.formId, GFStripeObj.getBillingAddressMergeTag(activeFeed.address_country)),
-							currency: gform.applyFilters( 'gform_stripe_currency', GFStripeObj.currency, GFStripeObj.formId )
-						};
-						stripe.createToken(card, tokenData).then(function (response) {
-							GFStripeObj.elementsResponseHandler(response);
-						});
-						break;
-					case 'checkout':
-						$(this).submit();
+						if ( activeFeed.type === 'product' ) {
+							if ( !GFStripeObj.hasPaymentIntent || $('.requires_payment_method').length ) {
+								GFStripeObj.createPaymentMethod(stripe, card);
+							} else {
+								GFStripeObj.elementsResponseHandler(GFStripeObj.stripeResponse);
+							}
+						} else {
+							GFStripeObj.createToken(stripe, card);
+						}
 						break;
 					case 'stripe.js':
 						var form = $(this),
@@ -184,7 +228,7 @@ window.GFStripe = null;
 			if (field === '') {
 				return '';
 			} else {
-				return '{:' + field + '}';
+				return '{:' + field + ':value}';
 			}
 		};
 
@@ -227,33 +271,160 @@ window.GFStripe = null;
 
 		this.elementsResponseHandler = function (response) {
 
-			var form = this.form;
+			var form = this.form,
+				GFStripeObj = this,
+				activeFeed = this.activeFeed,
+			    currency = gform.applyFilters( 'gform_stripe_currency', this.currency, this.formId ),
+				amount = (0 === gf_global.gf_currency_config.decimals) ? window['gform_stripe_amount_' + this.formId] : window['gform_stripe_amount_' + this.formId] * 100;
 
-			// append stripe.js response
-			if (!$('#gf_stripe_response').length) {
-				form.append($('<input type="hidden" name="stripe_response" id="gf_stripe_response" />').val($.toJSON(response)));
-			} else {
-				$('#gf_stripe_response').val($.toJSON(response));
-			}
-
-			if (!response.error) {
-				//set last 4
-				form.append($('<input type="hidden" name="stripe_credit_card_last_four" id="gf_stripe_credit_card_last_four" />').val(response.token.card.last4));
-
-				// set card type
-				form.append($('<input type="hidden" name="stripe_credit_card_type" id="stripe_credit_card_type" />').val(response.token.card.brand));
-
-				// submit the form
-				form.submit();
-			} else {
+			if (response.error) {
 				// display error below the card field.
 				this.displayStripeCardError(response);
 				// when Stripe response contains errors, stay on page
 				// but remove some elements so the form can be submitted again
 				// also remove last_4 and card type if that already exists (this happens when people navigate back to previous page and submit an empty CC field)
 				this.resetStripeStatus(form, this.formId, this.isLastPage());
+
+				return;
 			}
 
+			if (!this.hasPaymentIntent) {
+				// append stripe.js response
+				if (!$('#gf_stripe_response').length) {
+					form.append($('<input type="hidden" name="stripe_response" id="gf_stripe_response" />').val($.toJSON(response)));
+				} else {
+					$('#gf_stripe_response').val($.toJSON(response));
+				}
+
+				if (activeFeed.type === 'product') {
+					//set last 4
+					form.append($('<input type="hidden" name="stripe_credit_card_last_four" id="gf_stripe_credit_card_last_four" />').val(response.paymentMethod.card.last4));
+
+					// set card type
+					form.append($('<input type="hidden" name="stripe_credit_card_type" id="stripe_credit_card_type" />').val(response.paymentMethod.card.brand));
+					// Create server side payment intent.
+					$.ajax({
+						async: false,
+						url: gforms_stripe_frontend_strings.ajaxurl,
+						dataType: 'json',
+						method: 'POST',
+						data: {
+							action: "gfstripe_create_payment_intent",
+							nonce: gforms_stripe_frontend_strings.create_payment_intent_nonce,
+							payment_method: response.paymentMethod.id,
+							currency: currency,
+							amount: amount,
+							feed_id: activeFeed.feedId
+						},
+						success: function (response) {
+							if (response.success) {
+								// populate the stripe_response field again.
+								if (!$('#gf_stripe_response').length) {
+									form.append($('<input type="hidden" name="stripe_response" id="gf_stripe_response" />').val($.toJSON(response.data)));
+								} else {
+									$('#gf_stripe_response').val($.toJSON(response.data));
+								}
+								// submit the form
+								form.submit();
+							} else {
+								response.error = response.data;
+								delete response.data;
+								GFStripeObj.displayStripeCardError(response);
+								GFStripeObj.resetStripeStatus(form, GFStripeObj.formId, GFStripeObj.isLastPage());
+							}
+						}
+					});
+				} else {
+					form.append($('<input type="hidden" name="stripe_credit_card_last_four" id="gf_stripe_credit_card_last_four" />').val(response.token.card.last4));
+					form.append($('<input type="hidden" name="stripe_credit_card_type" id="stripe_credit_card_type" />').val(response.token.card.brand));
+					form.submit();
+				}
+			} else {
+				if (activeFeed.type === 'product') {
+					if (response.hasOwnProperty('amount') && response.amount === amount) {
+						form.submit();
+					} else {
+						$.ajax({
+							async: false,
+							url: gforms_stripe_frontend_strings.ajaxurl,
+							dataType: 'json',
+							method: 'POST',
+							data: {
+								action: "gfstripe_update_payment_intent",
+								nonce: gforms_stripe_frontend_strings.create_payment_intent_nonce,
+								payment_intent: response.id,
+								payment_method: response.hasOwnProperty( 'payment_method' ) ? response.payment_method : null,
+								currency: currency,
+								amount: amount,
+								feed_id: activeFeed.feedId
+							},
+							success: function (response) {
+								if (response.success) {
+									$('#gf_stripe_response').val($.toJSON(response.data));
+									form.submit();
+								} else {
+									response.error = response.data;
+									delete response.data;
+									GFStripeObj.displayStripeCardError(response);
+									GFStripeObj.resetStripeStatus(form, GFStripeObj.formId, GFStripeObj.isLastPage());
+								}
+							}
+						});
+					}
+				} else {
+					var currentResponse = JSON.parse($('#gf_stripe_response').val());
+					currentResponse.updatedToken = response.token.id;
+
+					$('#gf_stripe_response').val($.toJSON(currentResponse));
+
+					form.append($('<input type="hidden" name="stripe_credit_card_last_four" id="gf_stripe_credit_card_last_four" />').val(response.token.card.last4));
+					form.append($('<input type="hidden" name="stripe_credit_card_type" id="stripe_credit_card_type" />').val(response.token.card.brand));
+					form.submit();
+				}
+			}
+		};
+
+		this.scaActionHandler = function (stripe, formId) {
+			if ( ! $('#gform_' + formId).data('gfstripescaauth') ) {
+				$('#gform_' + formId).data('gfstripescaauth', true);
+
+				var GFStripeObj = this, response = JSON.parse($('#gf_stripe_response').val());
+				if (this.activeFeed.type === 'product') {
+					// Prevent the 3D secure auth from appearing twice, so we need to check if the intent status first.
+					stripe.retrievePaymentIntent(
+						response.client_secret
+					).then(function(result) {
+						if ( result.paymentIntent.status === 'requires_action' ) {
+							stripe.handleCardAction(
+								response.client_secret
+							).then(function(result) {
+								var currentResponse = JSON.parse($('#gf_stripe_response').val());
+								currentResponse.scaSuccess = true;
+
+								$('#gf_stripe_response').val($.toJSON(currentResponse));
+
+								GFStripeObj.maybeAddSpinner();
+								$('#gform_' + formId).data('gfstripescaauth', false);
+								$('#gform_' + formId).data('gfstripesubmitting', true).submit();
+							});
+						}
+					});
+				} else {
+					stripe.retrievePaymentIntent(
+						response.client_secret
+					).then(function(result) {
+						if ( result.paymentIntent.status === 'requires_action' ) {
+							stripe.handleCardPayment(
+								response.client_secret
+							).then(function(result) {
+								GFStripeObj.maybeAddSpinner();
+								$('#gform_' + formId).data('gfstripescaauth', false);
+								$('#gform_' + formId).data('gfstripesubmitting', true).submit();
+							});
+						}
+					});
+				}
+			}
 		};
 
 		this.isLastPage = function () {
@@ -312,13 +483,11 @@ window.GFStripe = null;
 		};
 
 		this.displayStripeCardError = function (event) {
-			var GFCCFieldId = '#input_' + this.formId + '_' + this.ccFieldId + '_1';
-
-			if (!$(GFCCFieldId).next('.validation_message').length) {
-				$(GFCCFieldId).after('<div class="gfield_description validation_message"></div>');
+			if (!this.GFCCField.next('.validation_message').length) {
+				this.GFCCField.after('<div class="gfield_description validation_message"></div>');
 			}
 
-			var cardErrors = $(GFCCFieldId).next('.validation_message');
+			var cardErrors = this.GFCCField.next('.validation_message');
 
 			if (event.error) {
 				cardErrors.html(event.error.message);
@@ -329,6 +498,142 @@ window.GFStripe = null;
 			} else {
 				cardErrors.html('');
 			}
+		};
+
+		this.updatePaymentAmount = function () {
+			var formId = this.formId, activeFeed = this.activeFeed;
+
+			if (activeFeed.paymentAmount !== 'form_total') {
+				var price = GFMergeTag.getMergeTagValue(formId, activeFeed.paymentAmount, ':price'),
+					qty = GFMergeTag.getMergeTagValue(formId, activeFeed.paymentAmount, ':qty');
+
+				if (typeof price === 'string') {
+					price = GFMergeTag.getMergeTagValue(formId, activeFeed.paymentAmount + '.2', ':price');
+					qty = GFMergeTag.getMergeTagValue(formId, activeFeed.paymentAmount + '.3', ':qty');
+				}
+
+				window['gform_stripe_amount_' + formId] = price * qty;
+			}
+
+			if (activeFeed.hasOwnProperty('setupFee')) {
+				price = GFMergeTag.getMergeTagValue(formId, activeFeed.setupFee, ':price');
+				qty = GFMergeTag.getMergeTagValue(formId, activeFeed.setupFee, ':qty');
+
+				if (typeof price === 'string') {
+					price = GFMergeTag.getMergeTagValue(formId, activeFeed.setupFee + '.2', ':price');
+					qty = GFMergeTag.getMergeTagValue(formId, activeFeed.setupFee + '.3', ':qty');
+				}
+
+				window['gform_stripe_amount_' + formId] += price * qty;
+			}
+		};
+
+		this.createToken = function (stripe, card) {
+			var GFStripeObj = this, activeFeed = this.activeFeed;
+				cardholderName = $( '#input_' + this.formId + '_' + this.ccFieldId + '_5' ).val(),
+				tokenData = {
+					name: cardholderName,
+					address_line1: GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_line1)),
+					address_line2: GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_line2)),
+					address_city: GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_city)),
+					address_state: GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_state)),
+					address_zip: GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_zip)),
+					address_country: GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_country)),
+					currency: gform.applyFilters( 'gform_stripe_currency', this.currency, this.formId )
+				};
+			stripe.createToken(card, tokenData).then(function (response) {
+				GFStripeObj.elementsResponseHandler(response);
+			});
+		};
+
+		this.createPaymentMethod = function (stripe, card, country) {
+			var GFStripeObj = this, activeFeed = this.activeFeed, countryFieldValue = '';
+
+			if ( activeFeed.address_country !== '' ) {
+				countryFieldValue = GFMergeTag.replaceMergeTags(GFStripeObj.formId, GFStripeObj.getBillingAddressMergeTag(activeFeed.address_country));
+			}
+
+			if (countryFieldValue !== '' && ( typeof country === 'undefined' || country === '' )) {
+                $.ajax({
+                    async: false,
+                    url: gforms_stripe_frontend_strings.ajaxurl,
+                    dataType: 'json',
+                    method: 'POST',
+                    data: {
+                        action: "gfstripe_get_country_code",
+                        nonce: gforms_stripe_frontend_strings.create_payment_intent_nonce,
+                        country: countryFieldValue,
+                        feed_id: activeFeed.feedId
+                    },
+                    success: function (response) {
+                        if (response.success) {
+                            GFStripeObj.createPaymentMethod(stripe, card, response.data.code);
+                        }
+                    }
+                });
+            } else {
+                var cardholderName = $('#input_' + this.formId + '_' + this.ccFieldId + '_5').val(),
+					line1 = GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_line1)),
+					line2 = GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_line2)),
+					city = GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_city)),
+					state = GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_state)),
+					postal_code = GFMergeTag.replaceMergeTags(this.formId, this.getBillingAddressMergeTag(activeFeed.address_zip)),
+                    data = { billing_details: { name: null, address: {} } };
+
+                if (cardholderName !== '') {
+                	data.billing_details.name = cardholderName;
+				}
+				if (line1 !== '') {
+					data.billing_details.address.line1 = line1;
+				}
+				if (line2 !== '') {
+					data.billing_details.address.line2 = line2;
+				}
+				if (city !== '') {
+					data.billing_details.address.city = city;
+				}
+				if (state !== '') {
+					data.billing_details.address.state = state;
+				}
+				if (postal_code !== '') {
+					data.billing_details.address.postal_code = postal_code;
+				}
+				if (country !== '') {
+					data.billing_details.address.country = country;
+				}
+
+				if (data.billing_details.name === null) {
+					delete data.billing_details.name;
+				}
+				if (data.billing_details.address === {}) {
+					delete data.billing_details.address;
+				}
+
+                stripe.createPaymentMethod('card', card, data).then(function (response) {
+                    if (GFStripeObj.stripeResponse !== null) {
+                        $('#gf_stripe_credit_card_last_four').val(response.paymentMethod.card.last4);
+                        $('#stripe_credit_card_type').val(response.paymentMethod.card.brand);
+
+                        response = {
+                            id: GFStripeObj.stripeResponse.id,
+                            client_secret: GFStripeObj.stripeResponse.client_secret,
+                            payment_method: response.paymentMethod.id
+                        };
+                    }
+
+                    GFStripeObj.elementsResponseHandler(response);
+                });
+            }
+		};
+
+		this.maybeHitRateLimits = function() {
+			if (this.hasOwnProperty('cardErrorCount')) {
+				if (this.cardErrorCount >= 5) {
+					return true;
+				}
+			}
+
+			return false;
 		};
 
 		this.init();

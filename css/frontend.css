@@ -20,3 +20,7 @@
 .StripeElement--webkit-autofill {
 	background-color: #fefde5 !important;
 }
+
+.gform_wrapper div.gform_stripe_requires_action {
+	display: none;
+}
