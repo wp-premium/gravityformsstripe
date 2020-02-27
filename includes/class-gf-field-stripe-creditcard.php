@@ -48,7 +48,7 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 		$js .= "gform.addFilter('gform_form_editor_can_field_be_added', function(result, type) {
             if (type === 'stripe_creditcard') {
                 if (GetFieldsByType(['stripe_creditcard']).length > 0) {" .
-			        sprintf( "alert(%s);", json_encode( esc_html__( 'Only one credit card field can be added to the form', 'gravityformsstripe' ) ) )
+			        sprintf( "alert(%s);", json_encode( esc_html__( 'Only one Stripe Card field can be added to the form', 'gravityformsstripe' ) ) )
 			       . " result = false;
 				}
             }
@@ -107,11 +107,12 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 	 * Get form editor button.
 	 *
 	 * @since 2.6
+	 * @since 3.4 Add the Stripe Card field only when checkout method is not Checkout.
 	 *
 	 * @return array
 	 */
 	public function get_form_editor_button() {
-		if ( gf_stripe()->get_plugin_setting( 'checkout_method' ) === 'stripe_elements' ) {
+		if ( gf_stripe()->get_plugin_setting( 'checkout_method' ) !== 'stripe_checkout' ) {
 			return array(
 				'group' => 'pricing_fields',
 				'text'  => $this->get_form_editor_field_title(),
