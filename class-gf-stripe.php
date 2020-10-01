@@ -208,6 +208,15 @@ class GFStripe extends GFPaymentAddOn {
 	protected $_current_meta_key = '';
 
 	/**
+	 * Contains an instance of the Stripe API library, if available.
+	 *
+	 * @since  3.4
+	 * @access protected
+	 * @var    GF_Stripe_API $api If available, contains an instance of the Stripe API library.
+	 */
+	protected $api = null;
+
+	/**
 	 * Enable rate limits to log card errors etc.
 	 *
 	 * @since 3.4
@@ -216,6 +225,32 @@ class GFStripe extends GFPaymentAddOn {
 	 */
 	protected $_enable_rate_limits = true;
 
+	/**
+	 * Whether Add-on framework has settings renderer support or not, settings renderer was introduced in Gravity Forms 2.5
+	 *
+	 * @since 3.8
+	 *
+	 * @var bool
+	 */
+	protected $_has_settings_renderer;
+
+	/**
+	 * Settings inputs prefix string.
+	 *
+	 * @since 3.8
+	 *
+	 * @var string
+	 */
+	protected $_input_prefix = '';
+
+	/**
+	 * Settings inputs container prefix string.
+	 *
+	 * @since 3.8
+	 *
+	 * @var string
+	 */
+	protected $_input_container_prefix = '';
 	/**
 	 * Get an instance of this class.
 	 *
@@ -290,14 +325,14 @@ class GFStripe extends GFPaymentAddOn {
 				'deps'      => array(),
 				'in_footer' => false,
 				'enqueue'   => array(
-					array( $this, 'stripe_elements_callback' ),
+					array( $this, 'stripe_js_v3_callback' ),
 				),
 			),
 			array(
 				'handle'    => 'gforms_stripe_frontend',
 				'src'       => $this->get_base_url() . "/js/frontend{$min}.js",
 				'version'   => $this->_version,
-				'deps'      => array( 'jquery', 'gform_json', 'gform_gravityforms' ),
+				'deps'      => array( 'jquery', 'gform_json', 'gform_gravityforms', 'wp-a11y' ),
 				'in_footer' => false,
 				'enqueue'   => array(
 					array( $this, 'frontend_script_callback' ),
@@ -332,6 +367,10 @@ class GFStripe extends GFPaymentAddOn {
 					),
 					'settings_url'                    => admin_url( 'admin.php?page=gf_settings&subview=' . $this->get_slug() ),
 					'ajax_nonce'                      => wp_create_nonce( 'gf_stripe_ajax' ),
+					'liveDependencySupported'         => $this->_has_settings_renderer,
+					'apiMode'                         => $this->get_api_mode( $this->get_settings() ),
+					'input_container_prefix'          => $this->_input_container_prefix,
+					'input_prefix'                    => $this->_input_prefix,
 				),
 			),
 		);
@@ -385,6 +424,19 @@ class GFStripe extends GFPaymentAddOn {
 	// # PLUGIN SETTINGS -----------------------------------------------------------------------------------------------
 
 	/**
+	 * Return the plugin's icon for the plugin/form settings menu.
+	 *
+	 * @since 3.8
+	 *
+	 * @return string
+	 */
+	public function get_menu_icon() {
+
+		return file_get_contents( $this->get_base_path() . '/images/menu-icon.svg' );
+
+	}
+
+	/**
 	 * Initialize the AJAX hooks.
 	 *
 	 * @since  Unknown
@@ -427,16 +479,15 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Handler for the gf_validate_secret_key AJAX request.
 	 *
-	 * @since  Unknown
-	 * @since  3.3 Fix PHP fatal error thrown when deleting test data.
+	 * @since Unknown
+	 * @since 3.3 Fix PHP fatal error thrown when deleting test data.
+	 * @since 3.4 Use GF_Stripe_API class.
+	 *
 	 * @access public
 	 *
 	 * @used-by GFStripe::init_ajax()
 	 * @uses    GFStripe::include_stripe_api()
 	 * @uses    GFAddOn::log_error()
-	 * @uses    \Stripe\Stripe::setApiKey()
-	 * @uses    \Stripe\Account::retrieve()
-	 * @uses    \Stripe\Error\Authentication::getMessage()
 	 *
 	 * @return void
 	 */
@@ -447,29 +498,21 @@ class GFStripe extends GFPaymentAddOn {
 			wp_send_json_error( array( 'message' => esc_html__( 'Access denied.', 'gravityformsstripe' ) ) );
 		}
 
-		// Get the API key name.
-		$key_name = rgpost( 'keyName' );
+		// Load the Stripe API library.
+		if ( ! class_exists( 'GF_Stripe_API' ) ) {
+			require_once 'includes/class-gf-stripe-api.php';
+		}
 
-		// If no cache or if new value provided, do a fresh validation.
-		$this->include_stripe_api();
-		\Stripe\Stripe::setApiKey( rgpost( 'key' ) );
+		$stripe = new GF_Stripe_API( rgpost( 'key' ) );
 
-		// Initialize validatity state.
+		// Initialize validity state.
 		$is_valid = true;
 
-		try {
+		$account = $stripe->get_account();
+		if ( is_wp_error( $account ) ) {
+			$this->log_error( __METHOD__ . '(): ' . $account->get_error_message() );
 
-			// Attempt to retrieve account details.
-			\Stripe\Account::retrieve();
-
-		} catch ( \Exception $e ) {
-
-			// Set validity state to false.
 			$is_valid = false;
-
-			// Log that key validation failed.
-			$this->log_error( __METHOD__ . "(): {$key_name}: " . $e->getMessage() );
-
 		}
 
 		// Prepare response.
@@ -497,7 +540,6 @@ class GFStripe extends GFPaymentAddOn {
 	 * @return array Plugin settings fields to add.
 	 */
 	public function plugin_settings_fields() {
-
 		$fields = array(
 			array(
 				'title'  => esc_html__( 'Stripe Account', 'gravityformsstripe' ),
@@ -558,10 +600,20 @@ class GFStripe extends GFPaymentAddOn {
 	 * @return array The API settings fields.
 	 */
 	public function api_settings_fields() {
+
+		// If no ssl certificate found, just return the ssl error message.
+		if ( ! is_ssl() ) {
+			return array(
+				array(
+					'name' => 'ssl_error',
+					'type' => 'ssl_error'
+				)
+			);
+		}
+
 		$api_mode = '';
-		if ( rgget( 'auth_payload' ) ) {
-			$auth_payload = unserialize( base64_decode( rgget( 'auth_payload' ) ) );
-			$api_mode     = $auth_payload['livemode'] ? 'live' : 'test';
+		if ( rgpost( 'access_token' ) ) {
+			$api_mode = ( rgpost( 'livemode' ) === true ) ? 'live' : 'test';
 		} elseif ( $this->is_detail_page() && empty( $api_mode ) ) {
 			$api_mode = $this->get_plugin_setting( 'api_mode' );
 		}
@@ -594,10 +646,12 @@ class GFStripe extends GFPaymentAddOn {
 			array(
 				'name' => 'live_auth_token',
 				'type' => 'auth_token_button',
+				'dependency' => $this->get_auth_button_dependency( 'live' ),
 			),
 			array(
 				'name' => 'test_auth_token',
 				'type' => 'auth_token_button',
+				'dependency' => $this->get_auth_button_dependency( 'test' ),
 			),
 			array(
 				'label' => 'hidden',
@@ -683,15 +737,16 @@ class GFStripe extends GFPaymentAddOn {
 			$fields = array_merge( $fields, $stripe_connect_fields );
 		}
 
+
 		$webhook_fields = array(
 			array(
 				'name'        => 'webhooks_enabled',
 				'label'       => esc_html__( 'Webhooks Enabled?', 'gravityformsstripe' ),
 				'type'        => 'checkbox',
 				'horizontal'  => true,
-				'required'    => ( ( $this->get_current_feed_id() && $this->is_feed_stripe_connect_enabled() ) || ! isset( $_GET['fid'] ) ) ? true : false,
+				'required'    => ( $this->get_current_feed_id() && $this->is_feed_stripe_connect_enabled() ) || ! isset( $_GET['fid'] ),
 				'description' => $this->get_webhooks_section_description(),
-				'dependency'  => $this->is_detail_page() ? array( $this, 'is_feed_stripe_connect_enabled' ) : false,
+				'dependency'  => $this->get_webhooks_dependency(),
 				'choices'     => array(
 					array(
 						'label' => esc_html__( 'I have enabled the Gravity Forms webhook URL in my Stripe account.', 'gravityformsstripe' ),
@@ -706,10 +761,7 @@ class GFStripe extends GFPaymentAddOn {
 				'type'                => 'text',
 				'input_type'          => 'password',
 				'class'               => 'medium',
-				'dependency'          => $this->is_detail_page() ? array(
-					$this,
-					'is_feed_stripe_connect_enabled',
-				) : false,
+				'dependency'          => $this->get_webhooks_dependency(),
 				'validation_callback' => array( $this, 'validate_webhook_signing_secret' ),
 			),
 			array(
@@ -718,10 +770,7 @@ class GFStripe extends GFPaymentAddOn {
 				'type'                => 'text',
 				'input_type'          => 'password',
 				'class'               => 'medium',
-				'dependency'          => $this->is_detail_page() ? array(
-					$this,
-					'is_feed_stripe_connect_enabled',
-				) : false,
+				'dependency'          => $this->get_webhooks_dependency(),
 				'validation_callback' => array( $this, 'validate_webhook_signing_secret' ),
 			),
 		);
@@ -729,6 +778,72 @@ class GFStripe extends GFPaymentAddOn {
 		$fields = array_merge( $fields, $webhook_fields );
 
 		return $fields;
+	}
+
+	/**
+	 * Generates dependency array for auth token button if live dependencies are supported.
+	 *
+	 * @param string $api_mode The API mode that the button value represents, could be live or test.
+	 *
+	 * @since 3.8
+	 *
+	 * @return array|false
+	 */
+	private function get_auth_button_dependency( $api_mode ) {
+		if ( ! $this->_has_settings_renderer ) {
+			return false;
+		}
+
+		return array(
+			'live'   => true,
+			'fields' => array(
+				array(
+					'field'  => 'api_mode',
+					'values' => array( $api_mode ),
+				),
+			),
+		);
+	}
+
+	/**
+	 * Generates webhooks fields dependency if required.
+	 *
+	 * @since 3.8
+	 *
+	 * @return array|false
+	 */
+	private function get_webhooks_dependency() {
+		if ( ! $this->is_detail_page() ) {
+			return false;
+		}
+
+		return array( $this, 'is_feed_stripe_connect_enabled' );
+	}
+
+	/**
+	 * Generates the markup for the SSL error message field.
+	 *
+	 * @param  array $field Field properties.
+	 * @param  bool  $echo  Display field contents. Defaults to true.
+	 *
+	 * @since 3.8
+	 *
+	 * @return string
+	 */
+	public function settings_ssl_error( $field, $echo = true ) {
+
+		$html = $this->_has_settings_renderer ? '<div class="alert gforms_note_error">' : '<div class="alert_red" style="padding:20px; padding-top:5px;">';
+		$html .= '<h4>' . esc_html__( 'SSL Certificate Required', 'gravityformsstripe' ) . '</h4>';
+		/* Translators: 1: Open link tag 2: Close link tag */
+		$html .= sprintf( esc_html__( 'Make sure you have an SSL certificate installed and enabled, then %1$sclick here to reloaad the settings page%2$s.', 'gravityformsstripe' ), '<a href="' . $this->get_settings_page_url() . '">', '</a>' );
+		$html .= '</div>';
+
+		if ( $echo ) {
+			echo $html;
+		}
+
+		return $html;
+
 	}
 
 	/**
@@ -800,44 +915,22 @@ class GFStripe extends GFPaymentAddOn {
 	 * @return string
 	 */
 	public function settings_auth_token_button( $field, $echo = true ) {
-		$is_feed_settings = $this->is_detail_page() ? true : false;
 
-		if ( $is_feed_settings ) {
-			$feed     = $this->get_current_feed();
-			$settings = $feed['meta'];
-		} else {
-			// don't display the button in the add-on settings when Stripe Connect is not enabled.
-			if ( ! $this->is_stripe_connect_enabled() ) {
-				return;
-			}
+		$settings = $this->get_settings();
 
-			$settings = $this->get_plugin_settings();
+		if ( ! $this->can_display_connect_button( $settings ) ) {
+			return '';
 		}
 
 		$api_mode = ( $field['name'] === 'live_auth_token' ) ? 'live' : 'test';
 
-		// Get Settings URL.
-		if ( $is_feed_settings ) {
-			$settings_url = add_query_arg(
-				array(
-					'page'    => 'gf_edit_forms',
-					'view'    => 'settings',
-					'subview' => $this->get_slug(),
-					'id'      => rgget( 'id' ),
-					'fid'     => $this->get_current_feed_id(),
-				),
-				admin_url( 'admin.php', 'https' )
-			);
-		} else {
-			$settings_url = admin_url( 'admin.php?page=gf_settings&subview=' . $this->get_slug(), 'https' );
-		}
-
 		// Get authentication URL.
 		$license_key = GFCommon::get_key();
-		$auth_url    = add_query_arg( array(
+		$auth_url = add_query_arg( array(
 			'mode'        => $api_mode,
-			'redirect_to' => rawurlencode( $settings_url ),
+			'redirect_to' => rawurlencode( $this->get_settings_page_url() ),
 			'license'     => $license_key,
+			'state'       => wp_create_nonce( $this->get_authentication_state_action() ),
 		), $this->get_gravity_api_url( '/auth/stripe' ) );
 
 		// Create connect button markup.
@@ -852,7 +945,7 @@ class GFStripe extends GFPaymentAddOn {
 
 		$deprecated_auth_message = '';
 		if ( $this->requires_reauthentication() ) {
-			$deprecated_auth_message = '<div class="alert_red" style="padding:20px; padding-top:5px; margin-bottom: 20px;">';
+			$deprecated_auth_message = $this->_has_settings_renderer ? '<div class="alert gforms_note_error">' : '<div class="alert_red" style="padding:20px; padding-top:5px; margin-bottom: 20px;">';
 			$deprecated_auth_message .= '<p>' . esc_html__( 'You are currently logged in to Stripe using a deprecated authentication method.', 'gravityformsstripe' ) . '</p>';
 			/* Translators: 1: Open strong tag 2: Close strong tag */
 			$deprecated_auth_message .= '<p>' . sprintf( esc_html__( '%1$sPlease login to your Stripe account via Stripe Connect using the button below.%2$s It is a more secure authentication method and will be required for upcoming features of the Stripe Add-on.', 'gravityformsstripe' ), '<strong>', '</strong>' ) . '</p>';
@@ -866,10 +959,9 @@ class GFStripe extends GFPaymentAddOn {
 		$is_valid = $this->is_stripe_auth_valid( $settings, $api_mode );
 
 		if ( $is_valid ) {
-			if ( ! rgblank( $this->get_stripe_user_id( $settings, $api_mode ) ) && ! $is_feed_settings ) {
-				$stripe_account = $this->get_stripe_account( $settings, $api_mode );
-				$display_name   = rgars( $stripe_account, 'settings/dashboard/display_name' );
-				$deauth_button  = sprintf(
+			if ( ! rgblank( $this->get_stripe_user_id( $settings, $api_mode ) ) && ! $this->is_detail_page() ) {
+				$display_name  = $this->get_stripe_display_name( $is_valid );
+				$deauth_button = sprintf(
 					' <a href="#" class="button gform_stripe_deauth_button" data-fid="%2$s" data-id="%3$s" data-mode="%4$s">%1$s</a>',
 					esc_html__( 'Disconnect', 'gravityformsstripe' ),
 					$this->get_current_feed_id(),
@@ -895,7 +987,7 @@ class GFStripe extends GFPaymentAddOn {
 				$html .= '<div class="alert_red deauth_scope" style="margin-top: 10px;padding:20px; padding-top:5px;">';
 				$html .= '<p><label for="' . $api_mode . '_deauth_scope0"><input type="radio" name="deauth_scope" value="site" id="' . $api_mode . '_deauth_scope0" checked="checked">';
 
-				$target = $is_feed_settings ? 'feed' : 'site';
+				$target = $this->is_detail_page() ? 'feed' : 'site';
 
 				$html .= sprintf( esc_html__( 'Disconnect this %s only', 'gravityformsstripe' ), $target );
 				$html .= '</label></p>';
@@ -906,20 +998,11 @@ class GFStripe extends GFPaymentAddOn {
 				$html = $connect_button;
 			}
 		} else {
-			// If SSL is available, display the connect button.
-			if ( is_ssl() ) {
-				$html = $connect_button;
-			} else {
-				$html = '<div class="alert_red" style="padding:20px; padding-top:5px;">';
-				$html .= '<h4>' . esc_html__( 'SSL Certificate Required', 'gravityformsstripe' ) . '</h4>';
-				/* Translators: 1: Open link tag 2: Close link tag */
-				$html .= sprintf( esc_html__( 'Make sure you have an SSL certificate installed and enabled, then %1$sclick here to continue%2$s.', 'gravityformsstripe' ), '<a href="' . $settings_url . '">', '</a>' );
-				$html .= '</div>';
-			}
+			$html = $connect_button;
 		}
 
 		// Lock account settings when it's a post back from changing transaction type.
-		if ( ( rgpost( '_gaddon_setting_transactionType' ) && ! $this->is_save_postback() ) ) {
+		if ( ( rgpost( $this->_input_prefix . '_transactionType' ) && ! $this->is_save_postback() ) ) {
 			$html .= '<script>';
 			$html .= 'jQuery(document).ready(function(){
 						GFStripeAdmin.accountSettingsLocked = true;});';
@@ -931,6 +1014,58 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		return $html;
+	}
+
+	/**
+	 * Decides if authentication button can be displayed or not.
+	 *
+	 * @param array $settings plugin settings or feed settings.
+	 *
+	 * @since 3.8
+	 *
+	 * @return bool
+	 */
+	private function can_display_connect_button( $settings ) {
+		return ( $this->is_detail_page() || $this->is_stripe_connect_enabled() )  && ! empty( $settings );
+	}
+
+	/**
+	 * Retrieves the plugin settings or feed settings depending on current screen.
+	 *
+	 * @since 3.8
+	 *
+	 * @return array
+	 */
+	public function get_settings() {
+		if ( $this->is_detail_page() ) {
+			$feed = $this->get_current_feed();
+		}
+
+		return ! empty( $feed['meta'] ) ? $feed['meta'] : $this->get_plugin_settings();
+	}
+
+	/**
+	 * Generates plugin settings page URL or feed details page URL depending on current screen.
+	 *
+	 * @since 3.8
+	 *
+	 * @return string
+	 */
+	public function get_settings_page_url() {
+		if ( ! $this->is_detail_page() ) {
+			return admin_url( 'admin.php?page=gf_settings&subview=' . $this->get_slug(), 'https' );
+		}
+
+		return add_query_arg(
+			array(
+				'page'    => 'gf_edit_forms',
+				'view'    => 'settings',
+				'subview' => $this->get_slug(),
+				'id'      => rgget( 'id' ),
+				'fid'     => $this->get_current_feed_id(),
+			),
+			admin_url( 'admin.php', 'https' )
+		);
 	}
 
 	/**
@@ -954,8 +1089,7 @@ class GFStripe extends GFPaymentAddOn {
 
 		$html .= '<p style="margin-top: -3px;">';
 		if ( $is_valid ) {
-			$stripe_account = $this->get_stripe_account( $settings, $api_mode );
-			$display_name   = rgars( $stripe_account, 'settings/dashboard/display_name' );
+			$display_name = $this->get_stripe_display_name( $is_valid );
 
 			/* Translators: 1: Open strong tag 2: Account name 3: Close account tag */
 			if ( ! empty( $display_name ) ) {
@@ -970,7 +1104,8 @@ class GFStripe extends GFPaymentAddOn {
 			}
 		}
 
-		$html .= $this->maybe_display_update_authentication_message( true, 'alert_red' );
+		$classes = $this->_has_settings_renderer ? 'alert gforms_note_error' : 'alert_red';
+		$html   .= $this->maybe_display_update_authentication_message( true, $classes );
 		if ( ! $this->requires_reauthentication() ) {
 			$disabled  = $this->get_current_feed_id() == 0 ? 'data-disabled="1"' : '';
 			$html     .= '<a class="button" id="gform_stripe_change_account" ' . $disabled . ' href="javascript:void(0);">';
@@ -999,6 +1134,7 @@ class GFStripe extends GFPaymentAddOn {
 	 * Store auth tokens when we get auth payload from Stripe Connect.
 	 *
 	 * @since 2.8
+	 * @since 3.5.1 Added support for the state param.
 	 */
 	public function maybe_update_auth_tokens() {
 		if ( rgget( 'subview' ) !== $this->get_slug() ) {
@@ -1006,8 +1142,21 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		// If access token is provided, save it.
-		if ( rgget( 'auth_payload' ) && ! $this->is_save_postback() ) {
-			$auth_payload = unserialize( base64_decode( rgget( 'auth_payload' ) ) );
+		if ( rgpost( 'auth_payload' ) ) {
+			$auth_payload = json_decode( base64_decode( rgpost( 'auth_payload' ) ), true );
+
+			// If state does not match, do not save.
+			if ( ! wp_verify_nonce( rgpost( 'state' ), $this->get_authentication_state_action() ) ) {
+
+				// Add error message.
+				GFCommon::add_error_message( esc_html__( 'Unable to connect to Stripe due to mismatched state.', 'gravityformsstripe' ) );
+
+				return;
+
+			}
+
+			// Get access token.
+			$access_token = rgar( $auth_payload, 'access_token' );
 
 			$is_feed_settings = $this->is_detail_page() ? true : false;
 
@@ -1018,19 +1167,19 @@ class GFStripe extends GFPaymentAddOn {
 				$settings = (array) $this->get_plugin_settings();
 			}
 
-			$settings['api_mode'] = $auth_payload['livemode'] ? 'live' : 'test';
+			$settings['api_mode'] = ( rgar( $auth_payload, 'livemode' ) === true ) ? 'live' : 'test';
 			$auth_token           = $this->get_auth_token( $settings, $settings['api_mode'] );
 
-			if ( empty( $auth_token ) || rgar( $settings, $settings['api_mode'] . '_secret_key' ) !== $auth_payload['access_token'] ) {
+			if ( empty( $auth_token ) || rgar( $settings, $settings['api_mode'] . '_secret_key' ) !== $access_token ) {
 				// Add auth info to plugin settings.
 				$settings[ $settings['api_mode'] . '_auth_token' ]               = array(
-					'stripe_user_id' => $auth_payload['stripe_user_id'],
-					'refresh_token'  => $auth_payload['refresh_token'],
+					'stripe_user_id' => rgar( $auth_payload, 'stripe_user_id' ),
+					'refresh_token'  => rgar( $auth_payload, 'refresh_token' ),
 					'date_created'   => time(),
 				);
-				$settings[ $settings['api_mode'] . '_secret_key' ]               = $auth_payload['access_token'];
+				$settings[ $settings['api_mode'] . '_secret_key' ]               = $access_token;
 				$settings[ $settings['api_mode'] . '_secret_key_is_valid' ]      = '1';
-				$settings[ $settings['api_mode'] . '_publishable_key' ]          = $auth_payload['stripe_publishable_key'];
+				$settings[ $settings['api_mode'] . '_publishable_key' ]          = rgar( $auth_payload, 'stripe_publishable_key' );
 				$settings[ $settings['api_mode'] . '_publishable_key_is_valid' ] = '1';
 
 				// Save settings.
@@ -1039,16 +1188,17 @@ class GFStripe extends GFPaymentAddOn {
 				} else {
 					$this->update_plugin_settings( $settings );
 				}
-			}
 
-			wp_redirect( remove_query_arg( 'auth_payload' ) );
-			exit();
+				// Reload page to load saved settings.
+				wp_redirect( $this->get_settings_page_url() );
+				exit();
+			}
 		}
 
 		// If error is provided, display message.
-		if ( rgget( 'auth_error' ) ) {
+		if ( rgpost( 'auth_error' ) ) {
 			// Add error message.
-			GFCommon::add_error_message( esc_html__( 'Unable to authenticate with Stripe.', 'gravityformszohocrm' ) );
+			GFCommon::add_error_message( esc_html__( 'Unable to authenticate with Stripe.', 'gravityformsstripe' ) );
 		}
 	}
 
@@ -1086,14 +1236,16 @@ class GFStripe extends GFPaymentAddOn {
 	 * @return int
 	 */
 	public function save_feed_settings( $feed_id, $form_id, $settings ) {
-		$feed  = $this->get_feed( $feed_id );
-		$modes = array( 'live', 'test' );
-		foreach ( $modes as $mode ) {
-			if ( rgempty( "{$mode}_auth_token", $settings ) ) {
-				$auth_token = $this->get_auth_token( $feed['meta'], $mode );
+		$feed = $this->get_feed( $feed_id );
+		if ( rgar( $feed, 'meta' ) ) {
+			$modes = array( 'live', 'test' );
+			foreach ( $modes as $mode ) {
+				if ( rgempty( "{$mode}_auth_token", $settings ) ) {
+					$auth_token = $this->get_auth_token( $feed['meta'], $mode );
 
-				if ( ! empty( $auth_token ) ) {
-					$settings[ "{$mode}_auth_token" ] = $auth_token;
+					if ( ! empty( $auth_token ) ) {
+						$settings[ "{$mode}_auth_token" ] = $auth_token;
+					}
 				}
 			}
 		}
@@ -1173,7 +1325,8 @@ class GFStripe extends GFPaymentAddOn {
 	 * @return false|string
 	 */
 	public function feed_list_message() {
-		if ( ! $this->can_create_feed() ) {
+		$checkout_method = $this->get_plugin_setting( 'checkout_method' );
+		if ( ! $this->can_create_feed() && $checkout_method === 'stripe_elements' && ! $this->has_stripe_card_field() ) {
 			return $this->requires_stripe_card_message();
 		}
 
@@ -1212,6 +1365,7 @@ class GFStripe extends GFPaymentAddOn {
 
 		// Get default payment feed settings fields.
 		$default_settings = parent::feed_settings_fields();
+
 
 		// Prepare customer information fields.
 		$customer_info_field = array(
@@ -1261,9 +1415,9 @@ class GFStripe extends GFPaymentAddOn {
 				'name'                => 'metaData',
 				'label'               => esc_html__( 'Metadata', 'gravityformsstripe' ),
 				'type'                => 'dynamic_field_map',
-				'limit'				  => 20,
+				'limit'               => 50,
 				'exclude_field_types' => array( 'creditcard', 'stripe_creditcard' ),
-				'tooltip'             => '<h6>' . esc_html__( 'Metadata', 'gravityformsstripe' ) . '</h6>' . esc_html__( 'You may send custom meta information to Stripe. A maximum of 20 custom keys may be sent. The key name must be 40 characters or less, and the mapped data will be truncated to 500 characters per requirements by Stripe. ' . $info , 'gravityformsstripe' ),
+				'tooltip'             => '<h6>' . esc_html__( 'Metadata', 'gravityformsstripe' ) . '</h6>' . esc_html__( 'You may send custom meta information to Stripe. A maximum of 50 custom keys may be sent. The key name must be 40 characters or less, and the mapped data will be truncated to 500 characters per requirements by Stripe. ' . $info, 'gravityformsstripe' ),
 				'validation_callback' => array( $this, 'validate_custom_meta' ),
 			),
 		);
@@ -1274,16 +1428,30 @@ class GFStripe extends GFPaymentAddOn {
 		// Remove subscription recurring times setting due to lack of Stripe support.
 		$default_settings = $this->remove_field( 'recurringTimes', $default_settings );
 
+		// Set trial field to be visibile by default, setup fee and trial period can coexist in stripe.
+		$trial_field = array(
+			'name'	 => 'trial',
+			'label'  => esc_html__( 'Trial', 'gravityformsstripe' ),
+			'type'   => 'trial',
+			'hidden' => false,
+			'tooltip' => '<h6>' . esc_html__( 'Trial Period', 'gravityforms' ) . '</h6>' . esc_html__( 'Enable a trial period.  The user\'s recurring payment will not begin until after this trial period.', 'gravityformsstripe' )
+		);
+		$default_settings = $this->replace_field( 'trial', $trial_field, $default_settings );
+
 		// Prepare trial period field.
 		$trial_period_field = array(
 			'name'                => 'trialPeriod',
 			'label'               => esc_html__( 'Trial Period', 'gravityformsstripe' ),
-			'style'               => 'width:40px;text-align:center;',
 			'type'                => 'trial_period',
-			'after_input'         => '&nbsp;' . esc_html__( 'days', 'gravityformsstripe' ),
 			'validation_callback' => array( $this, 'validate_trial_period' ),
 		);
 
+		if ( $this->_has_settings_renderer ) {
+			$trial_period_field[ 'append' ] = esc_html__( 'days', 'gravityformsstripe' );
+		} else {
+			$trial_period_field[ 'style' ]       = 'width:40px;text-align:center;';
+			$trial_period_field[ 'after_input' ] = '&nbsp;' . esc_html__( 'days', 'gravityformsstripe' );
+		}
 		// Add trial period field.
 		$default_settings = $this->add_field_after( 'trial', $trial_period_field, $default_settings );
 
@@ -1352,7 +1520,7 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		if ( $this->is_stripe_connect_enabled() ) {
-			// Add Stripe Account section.
+			// Add Stripe Account section if stripe connect is enabled.
 			$default_settings[] = array(
 				'title'      => esc_html__( 'Stripe Account', 'gravityformsstripe' ),
 				'fields'     => $this->api_settings_fields(),
@@ -1430,32 +1598,44 @@ class GFStripe extends GFPaymentAddOn {
 	 * @return bool True if feed creation is allowed. False otherwise.
 	 */
 	public function can_create_feed() {
-		// Check if the add-on settings are ready.
-		$settings    = $this->get_plugin_settings();
-		$api_mode    = $this->get_api_mode( $settings );
-		$account_set = rgar( $settings, "{$api_mode}_publishable_key_is_valid" ) && rgar( $settings, "{$api_mode}_secret_key_is_valid" ) && $this->is_webhook_enabled();
+		return $this->is_stripe_account_set() && $this->feed_allowed_for_current_form();
+	}
 
-		// Check if the condition is met.
+	/**
+	 * Checks if current form being processed ready to have a stripe feed.
+	 *
+	 * @since 3.8
+	 *
+	 * @return bool
+	 */
+	private function feed_allowed_for_current_form(){
+		$checkout_method = $this->get_plugin_setting( 'checkout_method' );
 		$form            = $this->get_current_form();
 		$feeds           = $this->get_feeds_by_slug( $this->_slug, $form['id'] );
-		$checkout_method = $this->get_plugin_setting( 'checkout_method' );
-		$has_credit_card = false;
+		// If stripe checkout is not used, form must have a stripe elements field, or a credit card field and at least one feed that has already been created before.
+		return (
+			$checkout_method === 'stripe_checkout'
+			|| $this->has_stripe_card_field( $form )
+			|| ( $this->has_credit_card_field( $form ) && $feeds )
+		);
+	}
 
-		if ( $checkout_method !== 'stripe_checkout' ) {
-			if ( $this->has_stripe_card_field( $form ) ) {
-				$has_credit_card = true;
-			} elseif ( $this->has_credit_card_field( $form ) && $feeds ) {
-				$has_credit_card = true;
-			}
+	/**
+	 * Checks if stripe account is authenticated and valid.
+	 *
+	 * @since 3.8
+	 *
+	 * @return bool
+	 */
+	private function is_stripe_account_set(){
+		$settings    = $this->get_plugin_settings();
+		$api_mode    = $this->get_api_mode( $settings );
 
-			if ( $has_credit_card ) {
-				return $account_set;
-			}
-
-			return false;
-		}
-
-		return $account_set;
+		return (
+			rgar( $settings, "{$api_mode}_publishable_key_is_valid" )
+			&& rgar( $settings, "{$api_mode}_secret_key_is_valid" )
+			&& $this->is_webhook_enabled()
+		);
 	}
 
 	/**
@@ -1584,13 +1764,9 @@ class GFStripe extends GFPaymentAddOn {
 					'name'     => $field['name'] . '_enabled',
 					'value'    => '1',
 					'onchange' => "if(jQuery(this).prop('checked')){
-						jQuery('#{$field['name']}_product').show('slow');
-						jQuery('#gaddon-setting-row-trial, #gaddon-setting-row-trialPeriod').hide('slow');
-						jQuery('#trial_enabled').prop( 'checked', false );
-						jQuery('#trialPeriod').val( '' );
+						jQuery('#{$field['name']}_product').show();
 					} else {
-						jQuery('#{$field['name']}_product').hide('slow');
-						jQuery('#gaddon-setting-row-trial').show('slow');
+						jQuery('#{$field['name']}_product').hide();
 					}",
 				),
 			),
@@ -1651,9 +1827,9 @@ class GFStripe extends GFPaymentAddOn {
 					'name'     => $field['name'] . '_enabled',
 					'value'    => '1',
 					'onchange' => "if(jQuery(this).prop('checked')){
-						jQuery('#gaddon-setting-row-trialPeriod').show('slow');
+						jQuery('#{$this->_input_container_prefix}trialPeriod').show();
 					} else {
-						jQuery('#gaddon-setting-row-trialPeriod').hide('slow');
+						jQuery('#{$this->_input_container_prefix}trialPeriod').hide();
 						jQuery('#trialPeriod').val( '' );
 					}",
 				),
@@ -1704,7 +1880,7 @@ class GFStripe extends GFPaymentAddOn {
 			<script type="text/javascript">
 			if( ! jQuery( "#trial_enabled" ).is( ":checked" ) || jQuery( "#setupFee_enabled" ).is( ":checked" ) ) {
 				jQuery( "#trial_enabled" ).prop( "checked", false );
-				jQuery( "#gaddon-setting-row-trialPeriod" ).hide();
+				jQuery( "#' . $this->_input_container_prefix . 'trialPeriod" ).hide();
 			}
 			</script>';
 
@@ -1737,7 +1913,7 @@ class GFStripe extends GFPaymentAddOn {
 
 		// If trial period is not numeric, set field error.
 		if ( $settings['trial_enabled'] && ( empty( $settings['trialPeriod'] ) || ! ctype_digit( $settings['trialPeriod'] ) ) ) {
-			$this->set_field_error( array( 'name' => 'trialValidationPlaceholder' ), esc_html__( 'Please enter a valid number of days.', 'gravityformsstripe' ) );
+			$this->set_field_error( $field, esc_html__( 'Please enter a valid number of days.', 'gravityformsstripe' ) );
 		}
 
 	}
@@ -1758,14 +1934,19 @@ class GFStripe extends GFPaymentAddOn {
 	public function validate_custom_meta( $field ) {
 
 		/*
-		 * Number of keys is limited to 20.
+		 * Number of keys is limited to 50.
 		 * Interface should control this, validating just in case.
 		 * Key names have maximum length of 40 characters.
 		 */
 
 		// Get metadata from posted settings.
-		$settings  = $this->get_posted_settings();
-		$meta_data = $settings['metaData'];
+		if ( $this->_has_settings_renderer ) {
+			$settings  = $this->get_settings_renderer()->get_posted_values();
+		} else {
+			$settings  = $this->get_posted_settings();
+		}
+
+		$meta_data = ! empty( $settings['metaData'] ) ? $settings['metaData'] : '' ;
 
 		// If metadata is not defined, return.
 		if ( empty( $meta_data ) ) {
@@ -1775,19 +1956,21 @@ class GFStripe extends GFPaymentAddOn {
 		// Get number of metadata items.
 		$meta_count = count( $meta_data );
 
-		// If there are more than 20 metadata keys, set field error.
-		if ( $meta_count > 20 ) {
-			$this->set_field_error( array( esc_html__( 'You may only have 20 custom keys.' ), 'gravityformsstripe' ) );
+		// If there are more than 50 metadata keys, set field error.
+		if ( $meta_count > 50 ) {
+			$meta_count_error = array( esc_html__( 'You may only have 50 custom keys.' ), 'gravityformsstripe' );
+			$this->set_field_error( $meta_count_error );
 			return;
 		}
 
+		$custom_meta_field = array( 'name' => 'metaData' );
 		// Loop through metadata and check the key name length (custom_key).
 		foreach ( $meta_data as $meta ) {
 			if ( empty( $meta['custom_key'] ) && ! empty( $meta['value'] ) ) {
-				$this->set_field_error( array( 'name' => 'metaData' ), esc_html__( "A field has been mapped to a custom key without a name. Please enter a name for the custom key, remove the metadata item, or return the corresponding drop down to 'Select a Field'.", 'gravityformsstripe' ) );
+				$this->set_field_error( $custom_meta_field, esc_html__( "A field has been mapped to a custom key without a name. Please enter a name for the custom key, remove the metadata item, or return the corresponding drop down to 'Select a Field'.", 'gravityformsstripe' ) );
 				break;
 			} else if ( strlen( $meta['custom_key'] ) > 40 ) {
-				$this->set_field_error( array( 'name' => 'metaData' ), sprintf( esc_html__( 'The name of custom key %s is too long. Please shorten this to 40 characters or less.', 'gravityformsstripe' ), $meta['custom_key'] ) );
+				$this->set_field_error( $custom_meta_field, sprintf( esc_html__( 'The name of custom key %s is too long. Please shorten this to 40 characters or less.', 'gravityformsstripe' ), $meta['custom_key'] ) );
 				break;
 			}
 		}
@@ -1803,8 +1986,9 @@ class GFStripe extends GFPaymentAddOn {
 	 * @param string $field_setting The field value.
 	 */
 	public function validate_webhook_signing_secret( $field, $field_setting ) {
+
 		if ( ! empty( $field_setting ) && strpos( $field_setting, 'whsec_' ) === false ) {
-			$this->set_field_error( array( 'name' => $field['name'] ), esc_html__( 'Please use the correct webhook signing secret, which should start with "whsec_".', 'gravityformsstripe' ) );
+			$this->set_field_error( $field, esc_html__( 'Please use the correct webhook signing secret, which should start with "whsec_".', 'gravityformsstripe' ) );
 		}
 	}
 
@@ -1821,10 +2005,10 @@ class GFStripe extends GFPaymentAddOn {
 	public function supported_billing_intervals() {
 
 		return array(
-			'day'   => array( 'label' => esc_html__( 'day(s)', 'gravityformsstripe' ),   'min' => 1, 'max' => 365 ),
-			'week'  => array( 'label' => esc_html__( 'week(s)', 'gravityformsstripe' ),  'min' => 1, 'max' => 12 ),
+			'day'   => array( 'label' => esc_html__( 'day(s)', 'gravityformsstripe' ), 'min' => 1, 'max' => 365 ),
+			'week'  => array( 'label' => esc_html__( 'week(s)', 'gravityformsstripe' ), 'min' => 1, 'max' => 12 ),
 			'month' => array( 'label' => esc_html__( 'month(s)', 'gravityformsstripe' ), 'min' => 1, 'max' => 12 ),
-			'year'  => array( 'label' => esc_html__( 'year(s)', 'gravityformsstripe' ),  'min' => 1, 'max' => 1 ),
+			'year'  => array( 'label' => esc_html__( 'year(s)', 'gravityformsstripe' ), 'min' => 1, 'max' => 1 ),
 		);
 
 	}
@@ -1921,6 +2105,11 @@ class GFStripe extends GFPaymentAddOn {
 			// Use priority 50 because users may hook to `gform_after_submission` for other purposes so we run it later.
 			add_action( 'gform_after_submission', array( $this, 'stripe_checkout_redirect_scripts' ), 110, 2 );
 		}
+
+		// Set UI prefixes depending on settings renderer availability.
+		$this->_has_settings_renderer  = $this->is_gravityforms_supported( '2.5-beta' );
+		$this->_input_prefix           = $this->_has_settings_renderer ? '_gform_setting' : '_gaddon_setting';
+		$this->_input_container_prefix = $this->_has_settings_renderer ? 'gform_setting_' : 'gaddon-setting-row-';
 
 		parent::init();
 
@@ -2075,7 +2264,22 @@ class GFStripe extends GFPaymentAddOn {
 	}
 
 	/**
+	 * Check if we should enqueue Stripe JS v3.
+	 *
+	 * @since  3.8
+	 *
+	 * @param array $form The form currently being processed.
+	 *
+	 * @return bool If the script should be enqueued.
+	 */
+	public function stripe_js_v3_callback( $form ) {
+		return $form && $this->has_feed( $form['id'] ) && ! $this->has_credit_card_field( $form );
+	}
+
+	/**
 	 * Check if we should display the Stripe Elements JS.
+	 *
+	 * @deprecated 3.8
 	 *
 	 * @since  2.6
 	 *
@@ -2386,7 +2590,6 @@ class GFStripe extends GFPaymentAddOn {
 	 * @uses    GFAddOn::get_field_value()
 	 * @uses    GFStripe::get_stripe_meta_data()
 	 * @uses    GFAddOn::log_debug()
-	 * @uses    \Stripe\Charge::create()
 	 * @uses    GFPaymentAddOn::authorization_error()
 	 *
 	 * @param array $feed            The feed object currently being processed.
@@ -2408,98 +2611,85 @@ class GFStripe extends GFPaymentAddOn {
 		if ( ! empty( $receipt_field ) && strtolower( $receipt_field ) !== 'do not send receipt' ) {
 			$data['receipt_email'] = $this->get_field_value( $form, $entry, $receipt_field );
 		}
-		// Get Stripe metadata for feed.
-		$metadata = $this->get_stripe_meta_data( $feed, $entry, $form );
-		if ( ! empty( $metadata ) ) {
-			$data['metadata'] = $metadata;
-		}
 
 		// check if stripe_response has a payment id.
 		// if yes, confirm the payment here.
 		$stripe_response = $this->get_stripe_js_response();
 		if ( substr( $stripe_response->id, 0, 3 ) === 'pi_' ) {
-			$intent = \Stripe\PaymentIntent::retrieve( $stripe_response->id );
-
-			try {
+			$result = $this->api->get_payment_intent( $stripe_response->id );
+			if ( ! is_wp_error( $result ) ) {
 				// Add customer, receipt_email and metadata.
 				// Change data before sending to Stripe.
 				$data = $this->get_product_payment_data( $data, $feed, $submission_data, $form, $entry );
 				$this->log_debug( __METHOD__ . '(): payment intent data to be updated => ' . print_r( $data, 1 ) );
 
-				\Stripe\PaymentIntent::update( $intent->id, $data );
-
-				if ( $intent->status === 'requires_confirmation' ) {
-					// Confirm first, and the status will become `requires_action` if the card requires authentication.
-					$intent->confirm();
+				$result = $this->api->update_payment_intent( $result->id, $data );
+				if ( ! is_wp_error( $result ) ) {
+					if ( $result->status === 'requires_confirmation' ) {
+						// Confirm first, and the status will become `requires_action` if the card requires authentication.
+						$result = $this->api->confirm_payment_intent( $result );
+					}
 				}
+			}
 
-				// if status = requires_action, return validation error so we can do dynamic authentication on the front end.
-				if ( $intent->status === 'requires_action' ) {
-					// This is not a real validation error, just a way we'd like to trigger the 3D secure.
-					// So don't use `authorization_error()`.
-					return array(
-						'error_message'   => '<span class="requires_action">' . esc_html__( '3D Secure authentication is required for this payment. Following the instructions on the page to move forward.', 'gravityformsstripe' ) . '</span>',
-						'is_success'      => false,
-						'is_authorized'   => false,
-						'requires_action' => true,
-					);
-				} elseif ( $intent->status === 'requires_payment_method' ) {
-					return $this->authorization_error( '<span class="requires_payment_method">' . esc_html__( 'Your payment attempt has failed. Please enter your card details and try again.', 'gravityformsstripe' ) . '</span>' );
-				} elseif ( $intent->status === 'canceled' ) {
-					return $this->authorization_error( esc_html__( 'The payment has been canceled', 'gravityformsstripe' ) );
-				} else {
-					return array(
-						'is_authorized'  => true,
-						'transaction_id' => $stripe_response->id,
-					);
-				}
-			} catch ( \Exception $e ) {
-				// Log that intent could not be confirmed.
-				$this->log_error( __METHOD__ . '(): Unable to authorize payment; ' . $e->getMessage() );
+			if ( is_wp_error( $result ) ) {
+				$this->log_error( __METHOD__ . '(): ' . $result->get_error_message() );
 
-				return $this->authorization_error( '<span class="requires_payment_method">' . $e->getMessage() . '</span>' );
+				return $this->authorization_error( '<span class="requires_payment_method">' . $result->get_error_message() . '</span>' );
+			}
+
+			// if status = requires_action, return validation error so we can do dynamic authentication on the front end.
+			if ( $result->status === 'requires_action' ) {
+				$error = $this->authorization_error( '<span class="requires_action">' . esc_html__( '3D Secure authentication is required for this payment. Following the instructions on the page to move forward.', 'gravityformsstripe' ) . '</span>' );
+
+				return array_merge( $error, array( 'requires_action' => true ) );
+			} elseif ( $result->status === 'requires_payment_method' ) {
+				return $this->authorization_error( '<span class="requires_payment_method">' . esc_html__( 'Your payment attempt has failed. Please enter your card details and try again.', 'gravityformsstripe' ) . '</span>' );
+			} elseif ( $result->status === 'canceled' ) {
+				return $this->authorization_error( esc_html__( 'The payment has been canceled', 'gravityformsstripe' ) );
+			} else {
+				return array(
+					'is_authorized'  => true,
+					'transaction_id' => $stripe_response->id,
+				);
 			}
 		}
 
-		try {
+		// Prepare Stripe charge meta.
+		$charge_meta = array(
+			'amount'      => $this->get_amount_export( $submission_data['payment_amount'], rgar( $entry, 'currency' ) ),
+			'currency'    => rgar( $entry, 'currency' ),
+			'description' => $this->get_payment_description( $entry, $submission_data, $feed ),
+			'capture'     => false,
+		);
 
-			// Prepare Stripe charge meta.
-			$charge_meta = array(
-				'amount'      => $this->get_amount_export( $submission_data['payment_amount'], rgar( $entry, 'currency' ) ),
-				'currency'    => rgar( $entry, 'currency' ),
-				'description' => $this->get_payment_description( $entry, $submission_data, $feed ),
-				'capture'     => false,
-			);
+		if ( $customer ) {
+			// Update the customer source with the Stripe token.
+			$customer->source = $stripe_response->id;
+			$this->api->save_customer( $customer );
+		} else {
+			// Add the Stripe token to the charge meta.
+			$charge_meta['source'] = $stripe_response->id;
+		}
 
-			if ( $customer ) {
-				// Update the customer source with the Stripe token.
-				$customer->source = $stripe_response->id;
-				$customer->save();
-			} else {
-				// Add the Stripe token to the charge meta.
-				$charge_meta['source'] = $stripe_response->id;
-			}
+		// merge $data with $charge_meta.
+		$charge_meta = array_merge( $charge_meta, $data );
+		$charge_meta = $this->get_product_payment_data( $charge_meta, $feed, $submission_data, $form, $entry );
+		// Log the charge we're about to process.
+		$this->log_debug( __METHOD__ . '(): Charge meta to be created => ' . print_r( $charge_meta, 1 ) );
 
-			// merge $data with $charge_meta.
-			$charge_meta = array_merge( $charge_meta, $data );
-			$charge_meta = $this->get_product_payment_data( $charge_meta, $feed, $submission_data, $form, $entry );
-			// Log the charge we're about to process.
-			$this->log_debug( __METHOD__ . '(): Charge meta to be created => ' . print_r( $charge_meta, 1 ) );
+		// Charge customer.
+		$charge = $this->api->create_charge( $charge_meta );
+		if ( is_wp_error( $charge ) ) {
+			$this->log_error( __METHOD__ . '(): ' . $charge->get_error_message() );
 
-			// Charge customer.
-			$charge = \Stripe\Charge::create( $charge_meta );
-
+			$auth = $this->authorization_error( $charge->get_error_message() );
+		} else {
 			// Get authorization data from charge.
 			$auth = array(
 				'is_authorized'  => true,
 				'transaction_id' => $charge['id'],
 			);
-
-		} catch ( \Exception $e ) {
-
-			// Set authorization data to error.
-			$auth = $this->authorization_error( $e->getMessage() );
-
 		}
 
 		return $auth;
@@ -2554,6 +2744,9 @@ class GFStripe extends GFPaymentAddOn {
 			$session_data['customer'] = rgar( $customer, 'id' );
 		}
 
+		// Use the payment amount from submission data.
+		$payment_amount = rgar( $submission_data, 'payment_amount' );
+
 		if ( ! $is_subscription ) {
 			// add discounts from the GF Coupon add-on.
 			// Stripe Checkout cannot display our coupon as a negative value,
@@ -2567,9 +2760,6 @@ class GFStripe extends GFPaymentAddOn {
 				}
 			}
 			if ( $discount_amt > 0 ) {
-				// Use the payment amount from submission data.
-				$payment_amount = rgar( $submission_data, 'payment_amount' );
-
 				/**
 				 * Filter line item name when there's coupon discounts apply to the payment.
 				 *
@@ -2618,12 +2808,6 @@ class GFStripe extends GFPaymentAddOn {
 			// Add description.
 			$session_data['payment_intent_data']['description'] = $this->get_payment_description( $entry, $submission_data, $feed );
 
-			// Add metadata to payment intent.
-			$metadata = $this->get_stripe_meta_data( $feed, $entry, $form );
-			if ( ! empty( $metadata ) ) {
-				$session_data['payment_intent_data']['metadata'] = $metadata;
-			}
-
 			// If receipt field is defined, add receipt email address to charge meta.
 			$receipt_field = rgars( $feed, 'meta/receipt_field' );
 			if ( ! empty( $receipt_field ) && strtolower( $receipt_field ) !== 'do not send receipt' ) {
@@ -2637,7 +2821,6 @@ class GFStripe extends GFPaymentAddOn {
 			}
 		} else {
 			// Prepare payment amount and trial period data.
-			$payment_amount        = $submission_data['payment_amount'];
 			$single_payment_amount = $submission_data['setup_fee'];
 			$trial_period_days     = rgars( $feed, 'meta/trialPeriod' ) ? $submission_data['trial'] : null;
 			$currency              = rgar( $entry, 'currency' );
@@ -2655,25 +2838,22 @@ class GFStripe extends GFPaymentAddOn {
 				$session_data['line_items'] = $line_items;
 			}
 
-			// Get Stripe plan for feed.
 			// Checkout Session does not support setting trial period days at the plan level. So we create plans in
 			// 0 trial days, and then set it in the subscription data.
 			if ( rgars( $feed, 'meta/subscription_name' ) ) {
 				$feed['meta']['subscription_name'] = GFCommon::replace_variables( rgars( $feed, 'meta/subscription_name' ), $form, $entry, false, true, true, 'text' );
 			}
-			$plan_id = $this->get_subscription_plan_id( $feed, $payment_amount, null, $currency );
-			$plan    = $this->get_plan( $plan_id );
-			// If error was returned when retrieving plan, return plan.
+
+			// Get Stripe plan that matches current feed.
+			$plan = $this->get_plan_for_feed( $feed, $payment_amount, null, $currency );
+
+			// If error was returned when retrieving plan, return authorization error array.
 			if ( rgar( $plan, 'error_message' ) ) {
 				return $plan;
 			}
-			// If plan does not exist, create it.
-			if ( ! $plan ) {
-				$plan = $this->create_plan( $plan_id, $feed, $payment_amount, null, $currency );
-			}
 
 			$items                                                  = array(
-				'plan' => $plan_id,
+				'plan' => $plan->id,
 			);
 			$session_data['subscription_data']['items'][]           = $items;
 			$session_data['subscription_data']['trial_period_days'] = $trial_period_days;
@@ -2705,8 +2885,8 @@ class GFStripe extends GFPaymentAddOn {
 
 		$this->log_debug( __METHOD__ . '(): Session to be created => ' . print_r( $session_data, true ) );
 
-		try {
-			$session    = \Stripe\Checkout\Session::create( $session_data );
+		$session = $this->api->create_checkout_session( $session_data );
+		if ( ! is_wp_error( $session ) ) {
 			$session_id = rgar( $session, 'id' );
 
 			if ( ! $is_subscription ) {
@@ -2724,9 +2904,9 @@ class GFStripe extends GFPaymentAddOn {
 					'session_id'      => $session_id,
 				);
 			}
-		} catch ( \Exception $e ) {
-			$this->log_error( sprintf( '%s(): Unable to create Stripe Checkout session; %s', __METHOD__, $e->getMessage() ) );
 		}
+
+		$this->log_error( __METHOD__ . '(): Unable to create Stripe Checkout session; ' . $session->get_error_message() );
 
 		return $this->authorization_error( esc_html__( 'Unable to create Stripe Checkout session.', 'gravityformsstripe' ) );
 	}
@@ -2778,9 +2958,9 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		// Get Stripe subscription object.
-		$subscription = $this->get_subscription( $entry['transaction_id'] );
+		$subscription = $this->api->get_subscription( $entry['transaction_id'] );
 
-		if ( ! $subscription ) {
+		if ( is_wp_error( $subscription ) ) {
 			return false;
 		}
 
@@ -2800,36 +2980,28 @@ class GFStripe extends GFPaymentAddOn {
 		 * @param array $feed          The feed object which processed the current entry.
 		 */
 		$at_period_end = apply_filters( 'gform_stripe_subscription_cancel_at_period_end', false, $entry, $feed );
+		$action        = $at_period_end ? 'update' : 'cancel';
 
-		try {
+		if ( $at_period_end ) {
+			$this->log_debug( __METHOD__ . '(): The gform_stripe_subscription_cancel_at_period_end filter was used; cancelling subscription at period end.' );
+			$subscription->cancel_at_period_end = true;
 
-			if ( $at_period_end ) {
-
-				$this->log_debug( __METHOD__ . '(): The gform_stripe_subscription_cancel_at_period_end filter was used; cancelling subscription at period end.' );
-				$subscription->cancel_at_period_end = true;
-				$subscription->save();
-				$this->log_debug( __METHOD__ . '(): Subscription updated.' );
-
-			} else {
-
-				$subscription->cancel();
-				$this->log_debug( __METHOD__ . '(): Subscription cancelled.' );
-
-			}
-
-			return true;
-
-		} catch ( \Exception $e ) {
-
-			$action = $at_period_end ? 'update' : 'cancel';
-
-			// Log error.
-			$this->log_error( sprintf( '%s(): Unable to %s subscription; %s', __METHOD__, $action, $e->getMessage() ) );
-
-			return false;
-
+			$result = $this->api->save_subscription( $subscription );
+			$this->log_debug( __METHOD__ . '(): Subscription updated.' );
+		} else {
+			$result = $this->api->cancel_subscription( $subscription );
+			$this->log_debug( __METHOD__ . '(): Subscription cancelled.' );
 		}
 
+		if ( is_wp_error( $result ) ) {
+			$this->log_error( sprintf( '%s(): Unable to %s subscription; %s', __METHOD__, $action, $result->get_error_message() ) );
+
+			return false;
+		} else {
+			$this->log_debug( sprintf( '%s(): Successfully %s the subscription.', __METHOD__, $action ) );
+		}
+
+		return true;
 	}
 
 	/**
@@ -2845,7 +3017,7 @@ class GFStripe extends GFPaymentAddOn {
 	 */
 	public function get_validation_result( $validation_result, $authorization_result ) {
 		if ( empty( $authorization_result['error_message'] ) ) {
-			return $validation_result;
+			return parent::get_validation_result( $validation_result, $authorization_result );
 		}
 
 		$credit_card_page   = 0;
@@ -2887,10 +3059,7 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @uses GFStripe::get_stripe_meta_data()
 	 * @uses GFStripe::get_payment_description()
-	 * @uses \Stripe\Charge::retrieve()
-	 * @uses \Stripe\Charge::save()
 	 * @uses GFAddOn::log_debug()
-	 * @uses \Stripe\Charge::capture()
 	 * @uses GFPaymentAddOn::get_amount_import()
 	 * @uses Exception::getMessage()
 	 *
@@ -2921,15 +3090,34 @@ class GFStripe extends GFPaymentAddOn {
 		// if yes, confirm the payment here.
 		$response = $this->get_stripe_js_response();
 		if ( substr( $response->id, 0, 3 ) === 'pi_' ) {
-			$intent = \Stripe\PaymentIntent::retrieve( $response->id );
+			$intent = $this->api->get_payment_intent( $response->id );
 
-			// Add entry ID to payment description. Some metadata could have properties available now, update it again.
+			if ( is_wp_error( $intent ) ) {
+				$this->log_error( __METHOD__ . '(): Cannot get payment intent data; ' . $intent->get_error_message() );
+
+				return array(
+					'is_success'    => false,
+					'error_message' => esc_html__( 'Cannot get payment intent data.', 'gravityformsstripe' ),
+				);
+			}
+
+			// Add entry ID to payment description.
 			$intent->description = $this->get_payment_description( $entry, $submission_data, $feed );
 			$metadata            = $this->get_stripe_meta_data( $feed, $entry, $form );
 			if ( ! empty( $metadata ) ) {
 				$intent->metadata = $metadata;
 			}
-			$intent->save();
+
+			// Save payment intent.
+			$intent = $this->api->save_payment_intent( $intent );
+			if ( is_wp_error( $intent ) ) {
+				$this->log_error( __METHOD__ . '(): Cannot update payment intent data; ' . $intent->get_error_message() );
+
+				return array(
+					'is_success'    => false,
+					'error_message' => esc_html__( 'Cannot update payment intent data.', 'gravityformsstripe' ),
+				);
+			}
 
 			// Capture the payment if the filter not used.
 			if ( $this->get_capture_method( $feed, $submission_data, $form, $entry ) === 'manual' ) {
@@ -2937,7 +3125,15 @@ class GFStripe extends GFPaymentAddOn {
 			}
 
 			// the filter not used, capture the payment intent.
-			$intent = $intent->capture();
+			$intent = $this->api->capture_payment_intent( $intent );
+			if ( is_wp_error( $intent ) ) {
+				$this->log_error( __METHOD__ . '(): Cannot capture payment intent data; ' . $intent->get_error_message() );
+
+				return array(
+					'is_success'    => false,
+					'error_message' => esc_html__( 'Cannot capture payment intent data.', 'gravityformsstripe' ),
+				);
+			}
 
 			if ( $intent->status !== 'succeeded' ) {
 				$payment = $this->authorization_error( esc_html__( 'Cannot capture the payment; the payment intent status is ', 'gravityformsstripe' ) . $intent->status );
@@ -2951,46 +3147,58 @@ class GFStripe extends GFPaymentAddOn {
 			}
 		} else {
 			// Get Stripe charge from authorization.
-			$charge = \Stripe\Charge::retrieve( $auth['transaction_id'] );
+			$charge = $this->api->get_charge( $auth['transaction_id'] );
+			if ( is_wp_error( $charge ) ) {
+				$this->log_error( __METHOD__ . '(): Unable to capture the charge; ' . $charge->get_error_message() );
 
-			try {
-
-				// Set charge description and metadata.
-				$charge->description = $this->get_payment_description( $entry, $submission_data, $feed );
-
-				$metadata = $this->get_stripe_meta_data( $feed, $entry, $form );
-				if ( ! empty( $metadata ) ) {
-					$charge->metadata = $metadata;
-				}
-
-				// Save charge.
-				$charge->save();
-
-				$capture_method = $this->get_capture_method( $feed, $submission_data, $form, $entry );
-
-				if ( $capture_method === 'manual' ) {
-					return array();
-				}
-
-				// Capture the charge.
-				$charge = $charge->capture();
-
-				// Prepare payment details.
-				$payment = array(
-					'is_success'     => true,
-					'transaction_id' => $charge->id,
-					'amount'         => $this->get_amount_import( $charge->amount, $entry['currency'] ),
-					'payment_method' => rgpost( 'stripe_credit_card_type' ),
+				return array(
+					'is_success'    => false,
+					'error_message' => esc_html__( 'Unable to capture the charge.', 'gravityformsstripe' ),
 				);
-
-			} catch ( \Exception $e ) {
-
-				// Log that charge could not be captured.
-				$this->log_error( __METHOD__ . '(): Unable to capture charge; ' . $e->getMessage() );
-
-				// Return the error.
-				$payment = $this->authorization_error( $e->getMessage() );
 			}
+
+			// Set charge description and metadata.
+			$charge->description = $this->get_payment_description( $entry, $submission_data, $feed );
+
+			$metadata = $this->get_stripe_meta_data( $feed, $entry, $form );
+			if ( ! empty( $metadata ) ) {
+				$charge->metadata = $metadata;
+			}
+
+			// Save charge.
+			$charge = $this->api->save_charge( $charge );
+			if ( is_wp_error( $charge ) ) {
+				$this->log_error( __METHOD__ . '(): Unable to save the charge; ' . $charge->get_error_message() );
+
+				return array(
+					'is_success'    => false,
+					'error_message' => esc_html__( 'Unable to save the charge.', 'gravityformsstripe' ),
+				);
+			}
+
+			// Capture the payment if the filter not used.
+			if ( $this->get_capture_method( $feed, $submission_data, $form, $entry ) === 'manual' ) {
+				return array();
+			}
+
+			// Capture the charge.
+			$charge = $this->api->capture_charge( $charge );
+			if ( is_wp_error( $charge ) ) {
+				$this->log_error( __METHOD__ . '(): Unable to capture the charge; ' . $charge->get_error_message() );
+
+				return array(
+					'is_success'    => false,
+					'error_message' => esc_html__( 'Unable to capture the charge.', 'gravityformsstripe' ),
+				);
+			}
+
+			// Prepare payment details.
+			$payment = array(
+				'is_success'     => true,
+				'transaction_id' => $charge->id,
+				'amount'         => $this->get_amount_import( $charge->amount, $entry['currency'] ),
+				'payment_method' => rgpost( 'stripe_credit_card_type' ),
+			);
 		}
 
 		return $payment;
@@ -3005,7 +3213,6 @@ class GFStripe extends GFPaymentAddOn {
 	 * @uses GFStripe::get_stripe_meta_data()
 	 * @uses GFStripe::get_customer()
 	 * @uses GFPaymentAddOn::process_subscription()
-	 * @uses \Stripe\Customer::save()
 	 * @uses \Exception::getMessage()
 	 * @uses GFAddOn::log_error()
 	 *
@@ -3026,7 +3233,13 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		// Update customer ID for entry.
-		gform_update_meta( $entry['id'], 'stripe_customer_id', $authorization['subscription']['customer_id'] );
+		$customer_id = rgars( $authorization, 'subscription/customer_id' );
+		if ( $customer_id ) {
+			gform_update_meta( $entry['id'], 'stripe_customer_id', $customer_id );
+		} else {
+			// No customer ID, setup the subscription error message.
+			$authorization['subscription']['error_message'] = esc_html__( 'Failed to get the customer ID from Stripe.', 'gravityformsstripe' );
+		}
 
 		if ( $this->is_stripe_checkout_enabled() ) {
 			// When the session is completed, we cannot run create_customer() because the customer is already created
@@ -3051,45 +3264,36 @@ class GFStripe extends GFPaymentAddOn {
 
 				// If coupon is set, add it to customer metadata.
 				if ( $coupon ) {
-					try {
-						\Stripe\Coupon::retrieve( $coupon );
+					$stripe_coupon = $this->api->get_coupon( $coupon );
+					if ( ! is_wp_error( $stripe_coupon ) ) {
 						$customer_meta['coupon'] = $coupon;
-					} catch ( \Exception $e ) {
-						// Log that we could not save coupon.
-						$this->log_error( __METHOD__ . '(): Unable to add the coupon to the customer; ' . $e->getMessage() );
+					} else {
+						$this->log_error( __METHOD__ . '(): Unable to add the coupon to the customer; ' . $stripe_coupon->get_error_message() );
 					}
 				}
 
-				try {
-					$customer = \Stripe\Customer::update(
-						$authorization['subscription']['customer_id'],
-						$customer_meta
-					);
-				} catch ( \Exception $e ) {
-					// Log that we could not update customer.
-					$this->log_error( __METHOD__ . '(): Unable to update the customer; ' . $e->getMessage() );
+				$customer = $this->api->update_customer( $authorization['subscription']['customer_id'], $customer_meta );
+				if ( is_wp_error( $customer ) ) {
+					$this->log_error( __METHOD__ . '(): Unable to update the customer; ' . $customer->get_error_message() . '. Customer meta passed: ' . print_r( $customer_meta, true ) );
 				}
 			}
 		} else {
 			$metadata = $this->get_stripe_meta_data( $feed, $entry, $form );
 			if ( ! empty( $metadata ) ) {
-
 				// Update to user meta post entry creation so entry ID is available.
-				try {
+				// Get customer.
+				$customer = $this->get_customer( $customer_id );
 
-					// Get customer.
-					$customer = $this->get_customer( $authorization['subscription']['customer_id'] );
-
+				if ( $customer ) {
 					// Update customer metadata.
 					$customer->metadata = $metadata;
 
 					// Save customer.
-					$customer->save();
+					$result = $this->api->save_customer( $customer );
 
-				} catch ( \Exception $e ) {
-
-					// Log that we could not save customer.
-					$this->log_error( __METHOD__ . '(): Unable to save customer; ' . $e->getMessage() );
+					if ( is_wp_error( $result ) ) {
+						$this->log_error( __METHOD__ . '(): Unable to save customer; ' . $result->get_error_message() );
+					}
 				}
 			}
 		}
@@ -3109,6 +3313,7 @@ class GFStripe extends GFPaymentAddOn {
 	 * @since  2.8     Added $feed param when including Stripe API.
 	 * @since  3.0     Support the new Stripe Checkout (the workflow is different).
 	 * @since  3.4     Added card error rate limits.
+	 * @since  3.5     Added support for GF_Stripe_API class.
 	 * @access public
 	 *
 	 * @uses GFStripe::include_stripe_api()
@@ -3117,24 +3322,19 @@ class GFStripe extends GFPaymentAddOn {
 	 * @uses GFStripe::get_subscription_plan_id()
 	 * @uses GFStripe::get_plan()
 	 * @uses GFStripe::get_stripe_js_response()
-	 * @uses GFStripe::create_plan()
 	 * @uses GFStripe::get_customer()
 	 * @uses GFAddOn::log_debug()
 	 * @uses GFPaymentAddOn::get_amount_export()
 	 * @uses GFAddOn::get_field_value()
 	 * @uses GFStripe::get_stripe_meta_data()
 	 * @uses GFAddOn::maybe_override_field_value()
-	 * @uses GFStripe::create_customer()
-	 * @uses \Stripe\Customer::save()
-	 * @uses \Stripe\Customer::updateSubscription()
-	 * @uses \Stripe\Customer::addInvoiceItem()
 	 *
 	 * @param array $feed            The feed object currently being processed.
 	 * @param array $submission_data The customer and transaction data.
 	 * @param array $form            The form object currently being processed.
 	 * @param array $entry           The entry object currently being processed.
 	 *
-	 * @return array Subscription details if successful. Contains error message if failed.
+	 * @return array|void Subscription details if successful. Contains error message if failed.
 	 */
 	public function subscribe( $feed, $submission_data, $form, $entry ) {
 		// Check if the current IP has hit the error rate limit.
@@ -3168,128 +3368,153 @@ class GFStripe extends GFPaymentAddOn {
 		if ( rgars( $feed, 'meta/subscription_name' ) ) {
 			$feed['meta']['subscription_name'] = GFCommon::replace_variables( rgars( $feed, 'meta/subscription_name' ), $form, $entry, false, true, true, 'text' );
 		}
-		// Get Stripe plan for feed.
-		$plan_id = $this->get_subscription_plan_id( $feed, $payment_amount, $trial_period_days, $currency );
-		$plan    = $this->get_plan( $plan_id );
 
-		// If error was returned when retrieving plan, return plan.
+		// Get Stripe plan that matches current feed.
+		$plan    = $this->get_plan_for_feed( $feed, $payment_amount, $trial_period_days, $currency );
+
+		// If error was returned when retrieving plan, return authorization error array.
 		if ( rgar( $plan, 'error_message' ) ) {
 			return $plan;
 		}
 
-		try {
+		// Get Stripe.js token.
+		$stripe_response = $this->get_stripe_js_response();
+		// Subscription has been created but the invoice hasn't been paid.
+		if ( ! empty( $stripe_response->subscription ) ) {
+			$subscription = $this->api->get_subscription( $stripe_response->subscription );
+			if ( is_wp_error( $subscription ) ) {
+				$this->log_error( __METHOD__ . '(): ' . $subscription->get_error_message() );
 
-			// If plan does not exist, create it.
-			if ( ! $plan ) {
-				$plan = $this->create_plan( $plan_id, $feed, $payment_amount, $trial_period_days, $currency );
+				return $this->authorization_error( $subscription->get_error_message() );
 			}
 
-			// Get Stripe.js token.
-			$stripe_response = $this->get_stripe_js_response();
-			// Subscription has been created but the invoice hasn't been paid.
-			if ( ! empty( $stripe_response->subscription ) ) {
-				$subscription = \Stripe\Subscription::retrieve( $stripe_response->subscription );
+			if ( rgar( $subscription, 'status' ) === 'active' || rgar( $subscription, 'status' ) === 'trialing' ) {
+				$_POST['stripe_response'] = '';
 
-				if ( rgar( $subscription, 'status' ) === 'active' || rgar( $subscription, 'status' ) === 'trialing' ) {
-					$_POST['stripe_response'] = '';
+				return array(
+					'is_success'      => true,
+					'subscription_id' => $stripe_response->subscription,
+					'customer_id'     => $subscription->customer,
+					'amount'          => $payment_amount,
+				);
+			} else {
+				$invoice = $this->api->get_invoice( rgar( $subscription, 'latest_invoice' ) );
+				if ( is_wp_error( $invoice ) ) {
+					$this->log_error( __METHOD__ . '(): ' . $invoice->get_error_message() );
 
-					return array(
-						'is_success'      => true,
-						'subscription_id' => $stripe_response->subscription,
-						'customer_id'     => $subscription->customer,
-						'amount'          => $payment_amount,
-					);
-				} else {
-					$invoice        = \Stripe\Invoice::retrieve( rgar( $subscription, 'latest_invoice' ) );
-					$payment_intent = \Stripe\PaymentIntent::retrieve( rgar( $invoice, 'payment_intent' ) );
+					return $this->authorization_error( $invoice->get_error_message() );
+				}
 
-					// Update customer source only when the plan id is the same.
-					if ( rgar( $payment_intent, 'status' ) === 'requires_payment_method' && ( $plan->id === rgars( $subscription, 'plan/id' ) ) ) {
-						if ( ! empty( $stripe_response->updatedToken ) ) {
-							\Stripe\Customer::update(
-								$subscription->customer,
-								array(
-									'source' => $stripe_response->updatedToken,
-								)
-							);
-							$invoice->pay( array( 'expand' => array( 'payment_intent' ) ) );
+				$payment_intent = $this->api->get_payment_intent( rgar( $invoice, 'payment_intent' ) );
+				if ( is_wp_error( $payment_intent ) ) {
+					$this->log_error( __METHOD__ . '(): ' . $payment_intent->get_error_message() );
 
-							// Retrieve it again because the status might have changed after we pay the invoice.
-							$subscription    = \Stripe\Subscription::retrieve( $stripe_response->subscription );
-							$subscription_id = $this->handle_subscription_payment( $subscription, $invoice );
+					return $this->authorization_error( $payment_intent->get_error_message() );
+				}
 
-							if ( is_array( $subscription_id ) ) {
-								return $subscription_id;
-							} else {
-								return array(
-									'is_success'      => true,
-									'subscription_id' => $subscription_id,
-									'customer_id'     => $subscription->customer,
-									'amount'          => $payment_amount,
-								);
+				// Update customer source only when the plan id is the same.
+				if ( rgar( $payment_intent, 'status' ) === 'requires_payment_method' && ( $plan->id === rgars( $subscription, 'plan/id' ) ) ) {
+					if ( ! empty( $stripe_response->updatedToken ) ) {
+						$result = $this->api->update_customer(
+							$subscription->customer,
+							array(
+								'source' => $stripe_response->updatedToken,
+							)
+						);
+						if ( ! is_wp_error( $result ) ) {
+							// Pay the invoice.
+							$result = $this->api->pay_invoice( $invoice, array( 'expand' => array( 'payment_intent' ) ) );
+							if ( ! is_wp_error( $result ) ) {
+								// Retrieve it again because the status might have changed after we pay the invoice.
+								$result = $this->api->get_subscription( $stripe_response->subscription );
+								if ( ! is_wp_error( $result ) ) {
+									$subscription_id = $this->handle_subscription_payment( $result, $invoice );
+
+									if ( is_array( $subscription_id ) ) {
+										return $subscription_id;
+									} else {
+										return array(
+											'is_success'      => true,
+											'subscription_id' => $subscription_id,
+											'customer_id'     => $result->customer,
+											'amount'          => $payment_amount,
+										);
+									}
+								}
 							}
-						} else {
-							return $this->authorization_error( '<span class="requires_payment_method">' . esc_html__( 'Your payment attempt has failed. Please enter your card details and try again.', 'gravityformsstripe' ) . '</span>' );
 						}
+
+						$this->log_error( __METHOD__ . '(): ' . $result->get_error_message() );
+
+						return $this->authorization_error( $result->get_error_message() );
+					} else {
+						return $this->authorization_error( '<span class="requires_payment_method">' . esc_html__( 'Your payment attempt has failed. Please enter your card details and try again.', 'gravityformsstripe' ) . '</span>' );
 					}
 				}
 			}
+		}
 
-			$customer = $this->get_customer( '', $feed, $entry, $form );
+		$customer = $this->get_customer( '', $feed, $entry, $form );
 
-			if ( $customer ) {
+		if ( $customer ) {
+			$this->log_debug( __METHOD__ . '(): Updating existing customer.' );
 
-				$this->log_debug( __METHOD__ . '(): Updating existing customer.' );
-
-				// Update the customer source with the Stripe token.
-				$customer->source = ( ! empty( $stripe_response->updatedToken ) ) ? $stripe_response->updatedToken : $stripe_response->id;
-				$customer->save();
-
+			// Update the customer source with the Stripe token.
+			$customer->source = ( ! empty( $stripe_response->updatedToken ) ) ? $stripe_response->updatedToken : $stripe_response->id;
+			$result           = $this->api->save_customer( $customer );
+			if ( ! is_wp_error( $result ) ) {
 				// If a setup fee is required, add an invoice item.
 				if ( $single_payment_amount ) {
 					$setup_fee = array(
 						'amount'   => $this->get_amount_export( $single_payment_amount, $currency ),
 						'currency' => $currency,
+						'customer' => $customer->id,
 					);
-					$customer->addInvoiceItem( $setup_fee );
+
+					$result = $this->api->add_invoice_item( $setup_fee );
 				}
-			} else {
-				// Prepare customer metadata.
-				// Starts from 3.0, customers created by Stripe Checkout won't have the `balance` set.
-				// Setup fee would be a line item in the invoice.
-				$customer_meta = array(
-					'description' => $this->get_field_value( $form, $entry, rgar( $feed['meta'], 'customerInformation_description' ) ),
-					'email'       => $this->get_field_value( $form, $entry, rgar( $feed['meta'], 'customerInformation_email' ) ),
-					'source'      => ( ! empty( $stripe_response->updatedToken ) ) ? $stripe_response->updatedToken : $stripe_response->id,
-					'balance'     => $this->get_amount_export( $single_payment_amount, $currency ),
-					'metadata'    => $this->get_stripe_meta_data( $feed, $entry, $form ),
-				);
-
-				// Get coupon for feed.
-				$coupon_field_id = rgar( $feed['meta'], 'customerInformation_coupon' );
-				$coupon          = $this->maybe_override_field_value( rgar( $entry, $coupon_field_id ), $form, $entry, $coupon_field_id );
-
-				// If coupon is set, add it to customer metadata.
-				if ( $coupon ) {
-					$customer_meta['coupon'] = $coupon;
-				}
-
-				$customer = $this->create_customer( $customer_meta, $feed, $entry, $form );
-
 			}
 
-			// Add subscription to customer and retrieve the subscription ID.
-			$subscription_id = $this->update_subscription( $customer, $plan, $feed, $entry, $form, $trial_period_days );
+			if ( is_wp_error( $result ) ) {
+				$this->log_error( __METHOD__ . '(): ' . $result->get_error_message() );
 
-			// An authorization_error is returned.
-			if ( is_array( $subscription_id ) ) {
-				return $subscription_id;
+				return $this->authorization_error( $result->get_error_message() );
+            }
+		} else {
+			// Prepare customer metadata.
+			// Starts from 3.0, customers created by Stripe Checkout won't have the `balance` set.
+			// Setup fee would be a line item in the invoice.
+			$customer_meta = array(
+				'description' => $this->get_field_value( $form, $entry, rgar( $feed['meta'], 'customerInformation_description' ) ),
+				'email'       => $this->get_field_value( $form, $entry, rgar( $feed['meta'], 'customerInformation_email' ) ),
+				'source'      => ( ! empty( $stripe_response->updatedToken ) ) ? $stripe_response->updatedToken : $stripe_response->id,
+				'balance'     => $this->get_amount_export( $single_payment_amount, $currency ),
+			);
+
+			// Get coupon for feed.
+			$coupon_field_id = rgar( $feed['meta'], 'customerInformation_coupon' );
+			$coupon          = $this->maybe_override_field_value( rgar( $entry, $coupon_field_id ), $form, $entry, $coupon_field_id );
+
+			// If coupon is set, add it to customer metadata.
+			if ( $coupon ) {
+				$customer_meta['coupon'] = $coupon;
 			}
-		} catch ( \Exception $e ) {
 
+			$customer = $this->create_customer( $customer_meta, $feed, $entry, $form );
+
+		}
+
+		// An authorization_error is returned.
+		if ( is_wp_error( $customer ) ) {
 			// Return authorization error.
-			return $this->authorization_error( $e->getMessage() );
+			return $this->authorization_error( $customer->get_error_message() );
+		}
 
+		// Add subscription to customer and retrieve the subscription ID.
+		$subscription_id = $this->update_subscription( $customer, $plan, $feed, $entry, $form, $trial_period_days );
+
+		if ( is_array( $subscription_id ) ) {
+			return $subscription_id;
 		}
 
 		// Return subscription data.
@@ -3328,7 +3553,7 @@ class GFStripe extends GFPaymentAddOn {
 
 				$form       = GFAPI::get_form( $form_id );
 				$session_id = sanitize_text_field( rgget( 'gf_stripe_session_id' ) );
-				$session    = \Stripe\Checkout\Session::retrieve( $session_id );
+				$session    = $this->api->get_checkout_session( $session_id );
 				$entries    = GFAPI::get_entries(
 					$form_id,
 					array(
@@ -3398,7 +3623,12 @@ class GFStripe extends GFPaymentAddOn {
 		$payment_status = rgar( $entry, 'payment_status' );
 
 		if ( $subscription_id = rgar( $session, 'subscription' ) ) {
-			$subscription = \Stripe\Subscription::retrieve( $subscription_id );
+			$subscription = $this->api->get_subscription( $subscription_id );
+			if ( is_wp_error( $subscription ) ) {
+				$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $subscription->get_error_message() );
+
+				return $action;
+			}
 
 			if ( in_array( rgar( $subscription, 'status' ), array( 'active', 'trialing' ), true ) && $payment_status !== 'Active' ) {
 				// Create the $authorization array and run process_subscription().
@@ -3414,21 +3644,54 @@ class GFStripe extends GFPaymentAddOn {
 				$this->process_subscription( $authorization, $feed, array(), $form, $entry );
 
 				// Update the subscription data if `gform_stripe_subscription_params_pre_update_customer` filter is used.
-				if ( has_filter( 'gform_stripe_subscription_params_pre_update_customer' ) ) {
-					$customer          = \Stripe\Customer::retrieve( rgar( $session, 'customer' ) );
-					$plan              = $this->get_plan( rgars( $subscription, 'items/data/0/plan/id' ) );
-					$trial_period_days = rgars( $subscription, 'items/data/0/plan/trial_period_days' );
-					$this->update_subscription( $customer, $plan, $feed, $entry, $form, $trial_period_days );
+				$customer = $this->api->get_customer( rgar( $session, 'customer' ) );
+				if ( is_wp_error( $customer ) ) {
+					$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $customer->get_error_message() );
+
+					return $action;
+				}
+
+				$plan = $this->get_plan( rgars( $subscription, 'items/data/0/plan/id' ) );
+				if ( is_wp_error( $subscription ) ) {
+					$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $subscription->get_error_message() );
+
+					return $action;
+				}
+
+				$trial_period_days            = rgars( $subscription, 'items/data/0/plan/trial_period_days' );
+				$subscription_params          = array(
+					'customer' => $customer->id,
+					'items'    => array(
+						array(
+							'plan' => $plan->id,
+						),
+					),
+				);
+				$filtered_subscription_params = $this->get_subscription_params( $subscription_params, $customer, $plan, $feed, $entry, $form, $trial_period_days );
+				if ( $subscription_params !== $filtered_subscription_params ) {
+					$subscription = $this->api->update_subscription( $subscription_id, $subscription_params );
+
+					if ( is_wp_error( $subscription ) ) {
+						$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $subscription->get_error_message() );
+
+						return $action;
+					}
 				}
 
 				// Add capture payment note.
 				$action['subscription_id'] = $subscription_id;
-				$invoice                   = \Stripe\Invoice::retrieve( rgar( $subscription, 'latest_invoice' ) );
-				$action['transaction_id']  = rgar( $invoice, 'payment_intent' );
-				$action['entry_id']        = $entry['id'];
-				$action['type']            = 'add_subscription_payment';
-				$action['amount']          = $this->get_amount_import( rgar( $invoice, 'amount_due' ), $entry['currency'] );
-				$action['note']            = '';
+				$invoice                   = $this->api->get_invoice( rgar( $subscription, 'latest_invoice' ) );
+				if ( is_wp_error( $invoice ) ) {
+					$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $invoice->get_error_message() );
+
+					return $action;
+				}
+
+				$action['transaction_id'] = rgar( $invoice, 'payment_intent' );
+				$action['entry_id']       = $entry['id'];
+				$action['type']           = 'add_subscription_payment';
+				$action['amount']         = $this->get_amount_import( rgar( $invoice, 'amount_due' ), $entry['currency'] );
+				$action['note']           = '';
 
 				// Get starting balance, assume this balance represents a setup fee or trial.
 				$starting_balance = $this->get_amount_import( rgar( $invoice, 'starting_balance' ), $entry['currency'] );
@@ -3437,7 +3700,7 @@ class GFStripe extends GFPaymentAddOn {
 				}
 
 				$amount_formatted = GFCommon::to_money( $action['amount'], $entry['currency'] );
-				$action['note']  .= sprintf( __( 'Subscription payment has been paid. Amount: %s. Subscription Id: %s', 'gravityformsstripe' ), $amount_formatted, $action['subscription_id'] );
+				$action['note']   .= sprintf( __( 'Subscription payment has been paid. Amount: %s. Subscription Id: %s', 'gravityformsstripe' ), $amount_formatted, $action['subscription_id'] );
 
 				if ( rgar( $subscription, 'status' ) === 'active' ) {
 					// Run gform_stripe_fulfillment hook for supporting delayed payments.
@@ -3445,11 +3708,20 @@ class GFStripe extends GFPaymentAddOn {
 				}
 			}
 		} else {
+			$action['abort_callback'] = true;
+
 			if ( $payment_status !== 'Paid' ) {
 				$submission_data       = gform_get_meta( $entry['id'], 'submission_data' );
 				$payment_intent        = rgar( $session, 'payment_intent' );
-				$payment_intent_object = \Stripe\PaymentIntent::retrieve( $payment_intent );
-				$authorization         = array(
+				$payment_intent_object = $this->api->get_payment_intent( $payment_intent );
+
+				if ( is_wp_error( $payment_intent_object ) ) {
+					$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $payment_intent_object->get_error_message() );
+
+					return $action;
+				}
+
+				$authorization = array(
 					'is_authorized'  => true,
 					'transaction_id' => $payment_intent,
 					'amount'         => $this->get_amount_import( rgars( $payment_intent_object, 'amount_received' ), $entry['currency'] ),
@@ -3481,14 +3753,16 @@ class GFStripe extends GFPaymentAddOn {
 				// Update payment intent for description to add Entry ID.
 				// Because the entry ID wasn't available when checkout session was created.
 				if ( ! empty( $submission_data ) ) {
+					$metadata = $this->get_stripe_meta_data( $feed, $entry, $form );
+					if ( ! empty( $metadata ) ) {
+						$payment_intent_object->metadata = $metadata;
+					}
 					$payment_intent_object->description = $this->get_payment_description( $entry, $submission_data, $feed );
-					$payment_intent_object->save();
+					$this->api->save_payment_intent( $payment_intent_object );
 
 					gform_delete_meta( $entry['id'], 'submission_data' );
 				}
 			}
-
-			$action['abort_callback'] = true;
 		}
 
 		return $action;
@@ -3499,10 +3773,10 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since 3.1
 	 *
-	 * @param array $session The session object.
-	 * @param array $entry   The entry object.
-	 * @param array $feed    The feed object.
-	 * @param array $form    The form object.
+	 * @param array|\Stripe\Checkout\Session $session The session object.
+	 * @param array                          $entry   The entry object.
+	 * @param array                          $feed    The feed object.
+	 * @param array                          $form    The form object.
 	 */
 	public function checkout_fulfillment( $session, $entry, $feed, $form ) {
 
@@ -3547,7 +3821,6 @@ class GFStripe extends GFPaymentAddOn {
 	 * @used-by GFStripe::process_subscription()
 	 * @used-by GFStripe::subscribe()
 	 * @uses    GFAddOn::log_debug()
-	 * @uses    \Stripe\Customer::retrieve()
 	 *
 	 * @param string $customer_id The identifier of the customer to be retrieved.
 	 * @param array  $feed        The feed currently being processed.
@@ -3576,11 +3849,13 @@ class GFStripe extends GFPaymentAddOn {
 
 		if ( $customer_id ) {
 			$this->log_debug( __METHOD__ . '(): Retrieving customer id => ' . print_r( $customer_id, 1 ) );
-			try {
-				return \Stripe\Customer::retrieve( $customer_id );
-			} catch ( \Exception $e ) {
-				$this->log_error( __METHOD__ . '(): Unable to get customer; ' . $e->getMessage() );
+			$customer = $this->api->get_customer( $customer_id );
+
+			if ( ! is_wp_error( $customer ) ) {
+				return $customer;
 			}
+
+			$this->log_error( __METHOD__ . '(): Unable to get customer; ' . $customer->get_error_message() );
 		}
 
 		return false;
@@ -3594,24 +3869,25 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @used-by GFStripe::subscribe()
 	 * @uses    GFAddOn::log_debug()
-	 * @uses    \Stripe\Customer::create()
 	 *
 	 * @param array $customer_meta The customer properties.
 	 * @param array $feed          The feed currently being processed.
 	 * @param array $entry         The entry currently being processed.
 	 * @param array $form          The form which created the current entry.
 	 *
-	 * @return \Stripe\Customer The Stripe customer object.
+	 * @return WP_Error|\Stripe\Customer The Stripe customer object.
 	 */
 	public function create_customer( $customer_meta, $feed, $entry, $form ) {
 
 		// Log the customer to be created.
 		$this->log_debug( __METHOD__ . '(): Customer meta to be created => ' . print_r( $customer_meta, 1 ) );
+		$customer = $this->api->create_customer( $customer_meta );
 
-		// Create customer.
-		$customer = \Stripe\Customer::create( $customer_meta );
-
-		$this->after_create_customer( $customer, $feed, $entry, $form );
+		if ( is_wp_error( $customer ) ) {
+			$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $customer->get_error_message() );
+		} else {
+			$this->after_create_customer( $customer, $feed, $entry, $form );
+		}
 
 		return $customer;
 	}
@@ -3646,44 +3922,88 @@ class GFStripe extends GFPaymentAddOn {
 	}
 
 	/**
+	 * Retrieves a plan that matches the feed properties or creates a new one if no matching plans exist.
+	 *
+	 * @since 3.7.2
+	 *
+	 * @param array     $feed              The feed object currently being processed.
+	 * @param float|int $payment_amount    The recurring amount.
+	 * @param int       $trial_period_days The number of days the trial should last.
+	 * @param string    $currency          The currency code for the entry being processed.
+	 *
+	 * @return \Stripe\Plan|array $plan The plan object, If invalid request, the authorization error array containing the error message.
+	 */
+	public function get_plan_for_feed( $feed, $payment_amount, $trial_period_days, $currency ) {
+
+		$plan_id = $this->get_subscription_plan_id( $feed, $payment_amount, $trial_period_days, $currency );
+		$plan    = $this->get_plan( $plan_id );
+
+		if ( rgar( $plan, 'error_message' ) ) {
+
+			// If $plan is an array that has an error message, it is an authorization error array.
+			return $plan;
+
+		} elseif ( false === $plan ) {
+
+			// plan does not exist, create it.
+			return $this->create_plan( $plan_id, $feed, $payment_amount, $trial_period_days, $currency );
+
+		} elseif ( false === $this->is_plan_for_feed( $plan, $feed, $payment_amount, $currency ) ) {
+
+			// Plan with same id exists but with mismatching properties.
+			// Append time to feed subscription name to guarantee the generated plan id will be unique.
+			$current_subscription_name         = rgars( $feed, 'meta/subscription_name', $feed['meta']['feedName'] );
+			$feed['meta']['subscription_name'] = $current_subscription_name . '_' . gmdate( 'Y_m_d_H_i_s' );
+			$this->update_feed_meta( $feed['id'], $feed['meta'] );
+			// Generate new unique plan id.
+			$plan_id = $this->get_subscription_plan_id( $feed, $payment_amount, $trial_period_days, $currency );
+			// Create a new plan with unique id and correct parameters.
+			return $this->create_plan( $plan_id, $feed, $payment_amount, $trial_period_days, $currency );
+
+		}
+
+		return $plan;
+	}
+
+	/**
+	 * Compares stripe plan object properties with feed properties to make sure this is the correct plan for this feed.
+	 *
+	 * @since 3.7.2
+	 *
+	 * @param \Stripe\Plan  $plan              The retrieved stripe plan object.
+	 * @param array         $feed              The feed object currently being processed.
+	 * @param float|int     $payment_amount    The recurring amount.
+	 * @param string        $currency          The currency code for the entry being processed.
+	 *
+	 * @return bool
+	 */
+	public function is_plan_for_feed( $plan, $feed, $payment_amount, $currency ) {
+		return (
+			$plan->amount === $this->get_amount_export( $payment_amount, $currency )
+			&& strtolower( $plan->currency ) === strtolower( $currency )
+			&& $plan->interval === $feed['meta']['billingCycle_unit']
+			&& $plan->interval_count === intval( $feed['meta']['billingCycle_length'] )
+		);
+	}
+
+	/**
 	 * Try and retrieve the plan if a plan with the matching id has previously been created.
 	 *
 	 * @since  Unknown
 	 * @access public
 	 *
 	 * @used-by GFStripe::subscribe()
-	 * @uses    \Stripe\Plan::retrieve()
 	 * @uses    GFPaymentAddOn::authorization_error()
 	 *
 	 * @param string $plan_id The subscription plan id.
 	 *
-	 * @return array|bool|string $plan The plan details. False if not found. If invalid request, the error message.
+	 * @return \Stripe\Plan|bool|array $plan The plan object. False if not found. If invalid request, the authorization error array containing the error message.
 	 */
 	public function get_plan( $plan_id ) {
-
-		try {
-
-			// Get Stripe plan.
-			$plan = \Stripe\Plan::retrieve( $plan_id );
-
-		} catch ( \Exception $e ) {
-
-			/**
-			 * There is no error type specific to failing to retrieve a subscription when an invalid plan ID is passed. We assume here
-			 * that any 'invalid_request_error' means that the subscription does not exist even though other errors (like providing
-			 * incorrect API keys) will also generate the 'invalid_request_error'. There is no way to differentiate these requests
-			 * without relying on the error message which is more likely to change and not reliable.
-			 */
-
-			// Get error response.
-			$response = $e->getJsonBody();
-
-			// If error is an invalid request error, return error message.
-			if ( rgars( $response, 'error/type' ) !== 'invalid_request_error' ) {
-				$plan = $this->authorization_error( $e->getMessage() );
-			} else {
-				$plan = false;
-			}
+		// Get Stripe plan.
+		$plan = $this->api->get_plan( $plan_id );
+		if ( is_wp_error( $plan ) ) {
+			$plan = $this->authorization_error( $plan->get_error_message() );
 		}
 
 		return $plan;
@@ -3697,7 +4017,6 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @used-by GFStripe::subscribe()
 	 * @uses    GFPaymentAddOn::get_amount_export()
-	 * @uses    \Stripe\Plan::create()
 	 * @uses    GFAddOn::log_debug()
 	 *
 	 * @param string    $plan_id           The plan ID.
@@ -3706,7 +4025,7 @@ class GFStripe extends GFPaymentAddOn {
 	 * @param int       $trial_period_days The number of days the trial should last.
 	 * @param string    $currency          The currency code for the entry being processed.
 	 *
-	 * @return \Stripe\Plan The plan object.
+	 * @return array|\Stripe\Plan The plan object, or an authorization error.
 	 */
 	public function create_plan( $plan_id, $feed, $payment_amount, $trial_period_days, $currency ) {
 		// Prepare plan metadata.
@@ -3726,7 +4045,11 @@ class GFStripe extends GFPaymentAddOn {
 		$this->log_debug( __METHOD__ . '(): Plan to be created => ' . print_r( $plan_meta, 1 ) );
 
 		// Create Stripe plan.
-		$plan = \Stripe\Plan::create( $plan_meta );
+		$plan = $this->api->create_plan( $plan_meta );
+		if ( is_wp_error( $plan ) ) {
+			$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $plan->get_error_message() );
+			$plan = $this->authorization_error( $plan->get_error_message() );
+		}
 
 		return $plan;
 	}
@@ -3737,6 +4060,7 @@ class GFStripe extends GFPaymentAddOn {
 	 * @since 2.3.4
 	 * @since 2.5.2 Added the $trial_period_days param.
 	 * @since 3.3   Updated to support payment intents API.
+	 * @since 3.4   Updated for Stripe SDK 7.0.
 	 *
 	 * @param \Stripe\Customer $customer          The Stripe customer object.
 	 * @param \Stripe\Plan     $plan              The Stripe plan object.
@@ -3749,7 +4073,14 @@ class GFStripe extends GFPaymentAddOn {
 	 */
 	public function update_subscription( $customer, $plan, $feed, $entry, $form, $trial_period_days = 0 ) {
 		if ( $this->has_credit_card_field( $form ) || $this->is_stripe_checkout_enabled() ) {
-			$subscription_params = array( 'plan' => $plan->id );
+			$subscription_params = array(
+				'customer' => $customer->id,
+				'items'    => array(
+					array(
+						'plan' => $plan->id,
+					),
+				),
+			);
 		} else {
 			$subscription_params = array(
 				'customer' => $customer->id,
@@ -3768,35 +4099,33 @@ class GFStripe extends GFPaymentAddOn {
 			$subscription_params['trial_from_plan'] = true;
 		}
 
-		/**
-		 * Allow the subscription parameters to be overridden before the customer is subscribed to the plan.
-		 *
-		 * @since 2.3.4
-		 * @since 2.5.2 Added the $trial_period_days param.
-		 *
-		 * @param array            $subscription_params The subscription parameters.
-		 * @param \Stripe\Customer $customer            The Stripe customer object.
-		 * @param \Stripe\Plan     $plan                The Stripe plan object.
-		 * @param array            $feed                The feed currently being processed.
-		 * @param array            $entry               The entry currently being processed.
-		 * @param array            $form                The form which created the current entry.
-		 * @param int              $trial_period_days   The number of days the trial should last.
-		 */
-		$subscription_params = apply_filters( 'gform_stripe_subscription_params_pre_update_customer', $subscription_params, $customer, $plan, $feed, $entry, $form, $trial_period_days );
-
-		if ( has_filter( 'gform_stripe_subscription_params_pre_update_customer' ) ) {
-			$this->log_debug( __METHOD__ . '(): Subscription parameters => ' . print_r( $subscription_params, 1 ) );
-		}
-
+		// Get filtered $subscription_params.
+		$subscription_params = $this->get_subscription_params( $subscription_params, $customer, $plan, $feed, $entry, $form, $trial_period_days );
 		if ( $this->has_credit_card_field( $form ) || $this->is_stripe_checkout_enabled() ) {
-			$subscription = $customer->updateSubscription( $subscription_params );
+			$update_subscription = rgar( $subscription_params, 'id' ) ? true : false;
 
-			return $subscription->id;
+			if ( $update_subscription ) {
+				$subscription = $this->api->update_subscription( rgar( $subscription_params, 'id' ), $subscription_params );
+			} else {
+				$subscription = $this->api->create_subscription( $subscription_params );
+			}
+
+			if ( ! is_wp_error( $subscription ) ) {
+				return $subscription->id;
+			} else {
+				$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $subscription->get_error_message() );
+			}
 		} else {
-			$subscription = \Stripe\Subscription::create( $subscription_params );
+			$subscription = $this->api->create_subscription( $subscription_params );
 
-			return $this->handle_subscription_payment( $subscription );
+			if ( ! is_wp_error( $subscription ) ) {
+				return $this->handle_subscription_payment( $subscription );
+			} else {
+				$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $subscription->get_error_message() );
+			}
 		}
+
+		return $this->authorization_error( $subscription->get_error_message() );
 	}
 
 	/**
@@ -3804,8 +4133,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since 3.3
 	 *
-	 * @param \Stripe\Subscription $subscription The subscription object.
-	 * @param \Stripe\Invoice|null $invoice      The invoice object.
+	 * @param \Stripe\Subscription|array $subscription The subscription object.
+	 * @param \Stripe\Invoice|null|array $invoice      The invoice object.
 	 *
 	 * @return int|array
 	 */
@@ -3843,6 +4172,8 @@ class GFStripe extends GFPaymentAddOn {
 	/**
 	 * Gets the Stripe subscription object for the given ID.
 	 *
+	 * @deprecated 3.5 Use $this->api->get_subscription() instead.
+	 *
 	 * @since 2.8
 	 *
 	 * @param string $subscription_id The subscription ID.
@@ -3879,18 +4210,15 @@ class GFStripe extends GFPaymentAddOn {
 	 * @param string      $event_id Stripe Event ID.
 	 * @param null|string $mode     The API mode; live or test.
 	 *
-	 * @return \Stripe\Event The Stripe event object.
+	 * @return WP_Error|\Stripe\Event The Stripe event object.
 	 */
 	public function get_stripe_event( $event_id, $mode = null ) {
-
 		// Include Stripe API library.
 		$this->include_stripe_api( $mode );
 
-		// Get Stripe event.
-		$event = \Stripe\Event::retrieve( $event_id );
+		$event = $this->api->get_event( $event_id );
 
 		return $event;
-
 	}
 
 	/**
@@ -3901,12 +4229,12 @@ class GFStripe extends GFPaymentAddOn {
 	 * @param array       $settings Settings.
 	 * @param string|null $mode API mode.
 	 *
-	 * @return Stripe\Account object.
+	 * @return Stripe\Account|WP_Error object.
 	 */
 	public function get_stripe_account( $settings, $mode = null ) {
 		$this->include_stripe_api( $mode, $settings );
 
-		return \Stripe\Account::retrieve();
+		return $this->api->get_account();
 	}
 
 	/**
@@ -3959,7 +4287,10 @@ class GFStripe extends GFPaymentAddOn {
 					// Add to metadata array.
 					$metadata[ $meta['custom_key'] ] = $field_value;
 				}
+			}
 
+			if ( ! empty( $metadata ) ) {
+				$this->log_debug( __METHOD__ . '(): ' . json_encode( $metadata ) );
 			}
 
 			// Clear the key in case get_field_value() and gform_stripe_field_value are used elsewhere.
@@ -4031,7 +4362,8 @@ class GFStripe extends GFPaymentAddOn {
 	 *
 	 * @since   Unknown
 	 * @since   2.8     Added $feed param.
-	 * @since   3.3     Set to use API version 2019-09-09.
+	 * @since   3.3     Set to use API version 2019-10-17.
+	 * @since   3.4     Use the new GF_Stripe_API class.
 	 * @access  public
 	 *
 	 * @used-by GFStripe::ajax_validate_secret_key()
@@ -4052,24 +4384,14 @@ class GFStripe extends GFPaymentAddOn {
 			$mode     = $this->get_api_mode( $settings );
 		}
 
+		// Load the Stripe API library.
+		if ( ! class_exists( 'GF_Stripe_API' ) ) {
+			require_once 'includes/class-gf-stripe-api.php';
+		}
+
 		$this->log_debug( sprintf( '%s(): Initializing Stripe API for %s mode.', __METHOD__, $mode ) );
 
-		// If Stripe class does not exist, load Stripe API library.
-		if ( ! class_exists( '\Stripe\Stripe' ) ) {
-			require_once( $this->get_base_path() . '/includes/autoload.php' );
-		}
-
-		require_once( $this->get_base_path() . '/includes/deprecated.php' );
-
-		// Set Stripe API key.
-		\Stripe\Stripe::setApiKey( $this->get_secret_api_key( $mode, $settings ) );
-		// Set API version.
-		\Stripe\Stripe::setApiVersion( '2019-10-17' );
-
-		if ( method_exists( '\Stripe\Stripe', 'setAppInfo' ) ) {
-			// Send plugin title, version and site url along with API calls.
-			\Stripe\Stripe::setAppInfo( $this->_title, $this->_version, esc_url( site_url() ) );
-		}
+		$stripe = new GF_Stripe_API( $this->get_secret_api_key( $mode, $settings ) );
 
 		/**
 		 * Run post Stripe API initialization action.
@@ -4077,6 +4399,9 @@ class GFStripe extends GFPaymentAddOn {
 		 * @since 2.0.10
 		 */
 		do_action( 'gform_stripe_post_include_api' );
+
+		// Assign the Stripe API object to this instance.
+		$this->api = $stripe;
 
 	}
 
@@ -4104,7 +4429,7 @@ class GFStripe extends GFPaymentAddOn {
 		 */
 		$server_port = apply_filters( 'gform_stripe_url_port', $_SERVER['SERVER_PORT'] );
 
-		if ( $server_port != '80' ) {
+		if ( $server_port != '80' && $server_port != '443' ) {
 			$page_url .= $_SERVER['SERVER_NAME'] . ':' . $server_port . $_SERVER['REQUEST_URI'];
 		} else {
 			$page_url .= $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI'];
@@ -4202,7 +4527,7 @@ class GFStripe extends GFPaymentAddOn {
 		$type   = $event->type;
 
 		$log_details += array(
-			'type'        => $type,
+			'type'                => $type,
 			'webhook api_version' => $event->api_version,
 		);
 
@@ -4253,17 +4578,21 @@ class GFStripe extends GFPaymentAddOn {
 
 							// Get session.
 							$session_id = gform_get_meta( $entry_id, 'stripe_session_id' );
-							$session    = \Stripe\Checkout\Session::retrieve( $session_id );
+							$session    = $this->api->get_checkout_session( $session_id );
 
-							// Mark authorized payment as Paid.
-							$this->log_debug( __METHOD__ . '(): Charge has been captured for entry #' . $entry_id . '. Mark is as paid.' );
+							if ( is_wp_error( $session ) ) {
+								$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $session->get_error_message() );
+							} else {
+								// Mark authorized payment as Paid.
+								$this->log_debug( __METHOD__ . '(): Charge has been captured for entry #' . $entry_id . '. Mark is as paid.' );
 
-							$action['entry_id'] = $entry_id;
-							$action['type']     = 'complete_payment';
-							$action['amount']   = $this->get_amount_import( rgars( $event, 'data/object/amount' ), $entry['currency'] );
+								$action['entry_id'] = $entry_id;
+								$action['type']     = 'complete_payment';
+								$action['amount']   = $this->get_amount_import( rgars( $event, 'data/object/amount' ), $entry['currency'] );
 
-							// Run gform_stripe_fulfillment hook.
-							$this->checkout_fulfillment( $session, $entry, $feed, $form );
+								// Run gform_stripe_fulfillment hook.
+								$this->checkout_fulfillment( $session, $entry, $feed, $form );
+							}
 						}
 					}
 				}
@@ -4325,19 +4654,29 @@ class GFStripe extends GFPaymentAddOn {
 
 					// Detect the 0002 invoice for subscriptions with trial just ended.
 					if ( $this->is_stripe_checkout_enabled() && rgar( $entry, 'payment_status' ) === 'Active' && $number[1] === '0002' ) {
-						$subscription_obj = \Stripe\Subscription::retrieve( $action['subscription_id'] );
-						$trial_end        = rgar( $subscription_obj, 'trial_end' );
-						// After the trial has ended, the invoice created right away will be #0002.
-						if ( $trial_end && $trial_end <= time() ) {
-							$form = GFAPI::get_form( $entry['form_id'] );
-							$feed = $this->get_payment_feed( $entry, $form );
 
-							// Get session.
-							$session_id = gform_get_meta( $entry_id, 'stripe_session_id' );
-							$session    = \Stripe\Checkout\Session::retrieve( $session_id );
+						$result = $this->api->get_subscription( $action['subscription_id'] );
 
-							// fulfill delayed feeds.
-							$this->checkout_fulfillment( $session, $entry, $feed, $form );
+						if ( ! is_wp_error( $result ) ) {
+							$trial_end = rgar( $result, 'trial_end' );
+							// After the trial has ended, the invoice created right away will be #0002.
+							if ( $trial_end && $trial_end <= time() ) {
+								$form = GFAPI::get_form( $entry['form_id'] );
+								$feed = $this->get_payment_feed( $entry, $form );
+
+								// Get session.
+								$session_id = gform_get_meta( $entry_id, 'stripe_session_id' );
+								$result     = $this->api->get_checkout_session( $session_id );
+
+								if ( ! is_wp_error( $result ) ) {
+									// fulfill delayed feeds.
+									$this->checkout_fulfillment( $result, $entry, $feed, $form );
+								}
+							}
+						}
+
+						if ( is_wp_error( $result ) ) {
+							$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $result->get_error_message() );
 						}
 					}
 				}
@@ -4368,28 +4707,33 @@ class GFStripe extends GFPaymentAddOn {
 			case 'checkout.session.completed':
 				// support this event so Checkout will return success in less than 10 seconds.
 				$session_id = rgars( $event, 'data/object/id' );
-				$session    = \Stripe\Checkout\Session::retrieve( $session_id );
-				$entries    = GFAPI::get_entries(
-					null,
-					array(
-						'field_filters' => array(
-							array(
-								'key'   => 'stripe_session_id',
-								'value' => $session_id,
+				$session    = $this->api->get_checkout_session( $session_id );
+
+				if ( ! is_wp_error( $session ) ) {
+					$entries = GFAPI::get_entries(
+						null,
+						array(
+							'field_filters' => array(
+								array(
+									'key'   => 'stripe_session_id',
+									'value' => $session_id,
+								),
 							),
-						),
-					)
-				);
+						)
+					);
 
-				if ( empty( $entries ) ) {
-					return $this->get_entry_not_found_wp_error( 'transaction', $action, $event );
+					if ( empty( $entries ) ) {
+						return $this->get_entry_not_found_wp_error( 'transaction', $action, $event );
+					} else {
+						$entry = $entries[0];
+						$form  = GFAPI::get_form( $entry['form_id'] );
+						$feed  = $this->get_payment_feed( $entry, $form );
+
+						$this->log_debug( __METHOD__ . "(): Stripe Checkout session will be completed by the webhook event {$type}." );
+						$action = array_merge( $action, $this->complete_checkout_session( $session, $entry, $feed, $form ) );
+					}
 				} else {
-					$entry = $entries[0];
-					$form  = GFAPI::get_form( $entry['form_id'] );
-					$feed  = $this->get_payment_feed( $entry, $form );
-
-					$this->log_debug( __METHOD__ . "(): Stripe Checkout session will be completed by the webhook event {$type}." );
-					$action = array_merge( $action, $this->complete_checkout_session( $session, $entry, $feed, $form ) );
+					$this->log_error( __METHOD__ . '(): A Stripe API error occurs; ' . $session->get_error_message() );
 				}
 
 				break;
@@ -4455,7 +4799,7 @@ class GFStripe extends GFPaymentAddOn {
 	 * @since 2.8   Added support for webhooks per feed.
 	 * @since 2.3.1
 	 *
-	 * @return false|WP_Error|\Stripe\Event
+	 * @return bool|array|WP_Error|\Stripe\Event
 	 */
 	public function get_webhook_event() {
 
@@ -4473,40 +4817,25 @@ class GFStripe extends GFPaymentAddOn {
 		$feed            = ( ! empty( $feed_id ) ) ? $this->get_feed( $feed_id ) : null;
 		$settings        = ( ! empty( $feed ) ) ? $feed['meta'] : null;
 		$endpoint_secret = $this->get_webhook_signing_secret( $mode, $settings );
-		$event           = $error_message = false;
+		$error_message   = false;
 
 		$event_id      = rgar( $response, 'id' );
 		$is_test_event = 'evt_00000000000000' === $event_id;
 
-		try {
+		if ( empty( $endpoint_secret ) && ! $is_test_event ) {
 
-			if ( empty( $endpoint_secret ) && ! $is_test_event ) {
+			// Use the legacy method for getting the event.
+			$event = $this->get_stripe_event( $event_id, $mode );
 
-				// Use the legacy method for getting the event.
-				$event = $this->get_stripe_event( $event_id, $mode );
+		} else {
 
-			} else {
+			$this->include_stripe_api( $mode, $settings );
+			$sig_header = $_SERVER['HTTP_STRIPE_SIGNATURE'];
+			$event      = $this->api->construct_event( $body, $sig_header, $endpoint_secret );
+		}
 
-				$this->include_stripe_api( $mode, $settings );
-				$sig_header = $_SERVER['HTTP_STRIPE_SIGNATURE'];
-				$event      = \Stripe\Webhook::constructEvent( $body, $sig_header, $endpoint_secret );
-			}
-
-		} catch ( \UnexpectedValueException $e ) {
-
-			// Invalid payload.
-			$error_message = $e->getMessage();
-
-		} catch ( \Stripe\Error\SignatureVerification $e ) {
-
-			// Invalid signature.
-			$error_message = $e->getMessage();
-
-		} catch ( \Exception $e ) {
-
-			// Any other issue.
-			$error_message = $e->getMessage();
-
+		if ( is_wp_error( $event ) ) {
+			$error_message = $event->get_error_message();
 		}
 
 		if ( $error_message ) {
@@ -4634,6 +4963,11 @@ class GFStripe extends GFPaymentAddOn {
 
 		// Get API mode from settings.
 		$api_mode = rgar( $settings, 'api_mode' );
+
+		// If the provided settings array has no api_mode or an empty value, for example in the case of an unsaved feed, use the plugin settings api mode.
+		if ( empty( $api_mode ) ) {
+			$api_mode = $this->get_plugin_setting( 'api_mode' );
+		}
 
 		/**
 		 * Filters the API mode.
@@ -4791,7 +5125,7 @@ class GFStripe extends GFPaymentAddOn {
 	 * @param array  $settings Settings.
 	 * @param string $mode API mode.
 	 *
-	 * @return bool
+	 * @return bool|\Stripe\Account
 	 */
 	public function is_stripe_auth_valid( $settings, $mode = null ) {
 		if ( empty( $mode ) ) {
@@ -4799,14 +5133,13 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		if ( rgar( $settings, "{$mode}_publishable_key_is_valid" ) && rgar( $settings, "{$mode}_secret_key_is_valid" ) ) {
-			try {
-				$this->get_stripe_account( $settings, $mode );
+			$result = $this->get_stripe_account( $settings, $mode );
 
-				return true;
-			} catch ( \Exception $e ) {
-				// Log error.
-				$this->log_error( sprintf( '%s(): Unable to get Stripe account info; %s', __METHOD__, $e->getMessage() ) );
+			if ( ! is_wp_error( $result ) ) {
+				return $result;
 			}
+
+			$this->log_error( sprintf( '%s(): Unable to get Stripe account info; %s', __METHOD__, $result->get_error_message() ) );
 		}
 
 		return false;
@@ -4872,9 +5205,9 @@ class GFStripe extends GFPaymentAddOn {
 	 * @return bool
 	 */
 	public function is_feed_stripe_connect_enabled( $feed_id = null ) {
-		$feed = empty( $feed_id ) ? $this->get_current_feed() : $this->get_feed( $feed_id );
+		$feed = ( empty( $feed_id ) || ! is_numeric( $feed_id ) ) ? $this->get_current_feed() : $this->get_feed( $feed_id );
 
-		if ( ! rgblank( $this->get_stripe_user_id( $feed['meta'] ) ) ) {
+		if ( ! empty( $feed['meta'] ) && ! rgblank( $this->get_stripe_user_id( $feed['meta'] ) ) ) {
 			return true;
 		}
 
@@ -4950,7 +5283,7 @@ class GFStripe extends GFPaymentAddOn {
 
 				if ( $response_code === 200 ) {
 					$auth_payload = json_decode( wp_remote_retrieve_body( $response ), true );
-					$auth_payload = unserialize( base64_decode( $auth_payload['auth_payload'] ) );
+					$auth_payload = json_decode( base64_decode( $auth_payload['auth_payload'] ), true );
 					if ( rgar( $auth_payload, 'stripe_user_id' ) === $stripe_user_id ) {
 						// Log that we revoked the access token.
 						$this->log_debug( __METHOD__ . '(): Stripe access token revoked.' );
@@ -5195,17 +5528,24 @@ class GFStripe extends GFPaymentAddOn {
 			}
 
 			$this->log_debug( __METHOD__ . "(): Outputting scripts for entry #{$entry['id']} for session {$session_id}." );
+
+			// Adding the GF_AJAX_POSTBACK wrapper so AJAX embedded forms can copy the script to the parent (top-level)
+			// frame, Safari can only perform the redirection from a top-level frame.
+			// For regular embedded forms the wrapper is harmless.
 			?>
             <script src="https://js.stripe.com/v3"></script>
-            <script>
-                var stripe = Stripe("<?php echo $this->get_publishable_api_key( $settings ); ?>");
+            <div class="GF_AJAX_POSTBACK">
+                <p class="gform_stripe_checkout_message"><?php esc_html_e( 'You\'re being redirected to the hosted Checkout page on Stripe...', 'gravityformsstripe' ); ?></p>
+                <script>
+                    var stripe = Stripe("<?php echo $this->get_publishable_api_key( $settings ); ?>");
 
-                stripe.redirectToCheckout({
-                    sessionId: "<?php echo $session_id; ?>"
-                }).then(function (result) {
-                    console.log(result);
-                });
-            </script>
+                    stripe.redirectToCheckout({
+                        sessionId: "<?php echo $session_id; ?>"
+                    }).then(function (result) {
+                        console.log(result);
+                    });
+                </script>
+            </div>
 			<?php
 			exit();
 		}
@@ -5546,7 +5886,7 @@ class GFStripe extends GFPaymentAddOn {
 	 * @return string
 	 */
 	public function get_gravity_api_url( $path = '' ) {
-		return ( defined( 'GRAVITY_API_URL' ) ? GRAVITY_API_URL : 'https://www.gravityhelp.com/wp-json/gravityapi/v1' ) . $path;
+		return ( defined( 'GRAVITY_API_URL' ) ? GRAVITY_API_URL : 'https://gravityapi.com/wp-json/gravityapi/v1' ) . $path;
 	}
 
 	/**
@@ -5651,7 +5991,7 @@ class GFStripe extends GFPaymentAddOn {
 			$form_id            = (int) $form['id'];
 
 			$sql = $wpdb->prepare( "
-				DELETE FROM {$wpdb->prefix}gf_entry_meta 
+				DELETE FROM {$wpdb->prefix}gf_entry_meta
 				WHERE form_id = %d
 				AND meta_key IN( {$sql_field_ids} )",
 				$form_id
@@ -5752,14 +6092,28 @@ class GFStripe extends GFPaymentAddOn {
 			$this->include_stripe_api();
 		}
 
-		$intent = \Stripe\PaymentIntent::create( [
-			'payment_method'      => sanitize_text_field( rgpost( 'payment_method' ) ),
+		$payment_method = rgpost( 'payment_method' );
+
+		$data = [
+			'payment_method'      => rgar( $payment_method, 'id' ),
 			'amount'              => intval( rgpost( 'amount' ) ),
 			'currency'            => sanitize_text_field( rgpost( 'currency' ) ),
 			'capture_method'      => 'manual', // Use manual capture by default, because we cannot update the capture_method after the payment intent crated.
 			'confirmation_method' => 'manual',
 			'confirm'             => false,
-		] );
+		];
+
+		/**
+		 * Filter to change the payment intent data before creating it.
+		 *
+		 * @since 3.5
+		 *
+		 * @param array $data The payment intent data.
+		 * @param array $feed The feed object.
+		 */
+		$data = apply_filters( 'gform_stripe_payment_intent_pre_create', $data, $feed );
+
+		$intent = $this->api->create_payment_intent( $data );
 
 		if ( $intent->status === 'requires_confirmation' ) {
 			wp_send_json_success(
@@ -5793,7 +6147,7 @@ class GFStripe extends GFPaymentAddOn {
 		}
 
 		$payment_intent = sanitize_text_field( rgpost( 'payment_intent' ) );
-		$payment_method = sanitize_text_field( rgpost( 'payment_method' ) );
+		$payment_method = rgpost( 'payment_method' );
 
 		$data = array(
 			'amount'   => intval( rgpost( 'amount' ) ),
@@ -5801,10 +6155,10 @@ class GFStripe extends GFPaymentAddOn {
 		);
 
 		if ( ! empty( $payment_method ) ) {
-			$data['payment_method'] = $payment_method;
+			$data['payment_method'] = rgar( $payment_method, 'id' );
 		}
 
-		$intent = \Stripe\PaymentIntent::update( $payment_intent, $data );
+		$intent = $this->api->update_payment_intent( $payment_intent, $data );
 
 		if ( $intent->status === 'requires_confirmation' ) {
 			wp_send_json_success(
@@ -5872,6 +6226,52 @@ class GFStripe extends GFPaymentAddOn {
 		$payment_data = apply_filters( 'gform_stripe_charge_pre_create', $payment_data, $feed, $submission_data, $form, $entry );
 
 		return $payment_data;
+	}
+
+	/**
+	 * Filter subscription parameters when creating or updating a subscription.
+	 *
+	 * @since 3.4
+	 *
+	 * @param array            $subscription_params The subscription parameters.
+	 * @param \Stripe\Customer $customer            The Stripe customer object.
+	 * @param \Stripe\Plan     $plan                The Stripe plan object.
+	 * @param array            $feed                The feed currently being processed.
+	 * @param array            $entry               The entry currently being processed.
+	 * @param array            $form                The form which created the current entry.
+	 * @param int              $trial_period_days   The number of days the trial should last.
+	 *
+	 * @return array
+	 */
+	public function get_subscription_params( $subscription_params, $customer, $plan, $feed, $entry, $form, $trial_period_days ) {
+		if ( has_filter( 'gform_stripe_subscription_params_pre_update_customer' ) ) {
+			/**
+			 * Allow the subscription parameters to be overridden before the customer is subscribed to the plan.
+			 *
+			 * @since 2.3.4
+			 * @since 2.5.2 Added the $trial_period_days param.
+			 *
+			 * @param array            $subscription_params The subscription parameters.
+			 * @param \Stripe\Customer $customer            The Stripe customer object.
+			 * @param \Stripe\Plan     $plan                The Stripe plan object.
+			 * @param array            $feed                The feed currently being processed.
+			 * @param array            $entry               The entry currently being processed.
+			 * @param array            $form                The form which created the current entry.
+			 * @param int              $trial_period_days   The number of days the trial should last.
+			 */
+			$subscription_params = apply_filters( 'gform_stripe_subscription_params_pre_update_customer', $subscription_params, $customer, $plan, $feed, $entry, $form, $trial_period_days );
+
+			// Backwards compatibility.
+			if ( rgar( $subscription_params, 'plan' ) && empty( $subscription_params['items'] ) ) {
+				$subscription_params['items'] = array( 'plan' => $plan->id );
+				unset( $subscription_params['plan'] );
+				$this->log_debug( __METHOD__ . '(): Change subscription parameters "plan" to "items[\'plan\']"' );
+			}
+
+			$this->log_debug( __METHOD__ . '(): Subscription parameters => ' . print_r( $subscription_params, 1 ) );
+		}
+
+		return $subscription_params;
 	}
 
 	/**
@@ -5951,6 +6351,32 @@ class GFStripe extends GFPaymentAddOn {
 		$this->log_debug( __METHOD__ . '(): The current IP has card errors in total of ' . $error_count . ' times' );
 
 		return false;
+	}
+
+	/**
+	 * Get the authentication state, which was created from a wp nonce.
+	 *
+	 * @since 3.5.1
+	 *
+	 * @return string
+	 */
+	public function get_authentication_state_action() {
+		return 'gform_stripe_authentication_state';
+	}
+
+	/**
+	 * Retreives stripe account display name.
+	 *
+	 * @param \Stripe\Account $stripe_account Stripe account object.
+	 *
+	 * @since 3.8
+	 *
+	 * @return string
+	 */
+	private function get_stripe_display_name( $stripe_account ) {
+		$display_name = rgars( $stripe_account, 'settings/dashboard/display_name' );
+		// in some cases it is possible to have an account with any empty display name, stripe call it unnamed account.
+		return ! empty( $display_name ) ? $display_name : esc_html__( 'Unnamed account', 'gravityformsstripe' );
 	}
 
 }

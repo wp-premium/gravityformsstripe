@@ -24,3 +24,8 @@
     padding: 2px 0px 6px 12px;
     margin-top: -7px;
 }
+
+#trialPeriod {
+	width: 4rem;
+	text-align: center;
+}

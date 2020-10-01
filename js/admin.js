@@ -2,6 +2,8 @@
  * Admin Script
  */
 
+/* global jQuery, gforms_stripe_admin_strings */
+
 window.GFStripeAdmin = null;
 
 (function ($) {
@@ -11,15 +13,21 @@ window.GFStripeAdmin = null;
 
         this.accountSettingsLocked = false;
         this.deauthActionable = false;
-        this.apiMode = $('[name="_gaddon_setting_api_mode"]:checked').val();
-
+        this.inputContainerPrefix = gforms_stripe_admin_strings.input_container_prefix;
+        this.inputPrefix = gforms_stripe_admin_strings.input_prefix;
+        this.liveDependencySupported = gforms_stripe_admin_strings.liveDependencySupported;
+        this.apiMode = gforms_stripe_admin_strings.apiMode;
         this.init = function() {
             this.initKeyStatus('live_publishable_key');
             this.initKeyStatus('live_secret_key');
             this.initKeyStatus('test_publishable_key');
             this.initKeyStatus('test_secret_key');
             this.bindDeauthorize();
-            this.bindAPIModeChange();
+
+            if ( ! this.liveDependencySupported ) {
+                this.bindAPIModeChange();
+            }
+
             this.maybeLockAccountSettings();
             this.bindWebhookAlert();
         }
@@ -202,21 +210,19 @@ window.GFStripeAdmin = null;
             var hideMode = ( this.apiMode === 'live' ) ? 'test' : 'live';
 
             // display the Stripe Connect button in corresponding mode.
-            $('#gaddon-setting-row-' + this.apiMode + '_auth_token').show();
-            $('#gaddon-setting-row-' + hideMode + '_auth_token').hide();
-
+            $('#' + this.inputContainerPrefix + this.apiMode + '_auth_token').show();
+            $('#' + this.inputContainerPrefix + hideMode + '_auth_token').hide();
             // Switch Stripe Connect button between live and test mode.
-            $('#tab_gravityformsstripe input[name="_gaddon_setting_api_mode"]').on('click', function(e) {
+            $('#tab_gravityformsstripe input[name="' + this.inputPrefix + '_api_mode"]').on('click', function(e) {
                 self.apiMode = $(this).val();
                 hideMode = ( self.apiMode === 'live' ) ? 'test' : 'live';
-                $('#gaddon-setting-row-' + hideMode + '_auth_token').hide();
-                $('#gaddon-setting-row-' + self.apiMode + '_auth_token').show();
+                $('#' + self.inputContainerPrefix + hideMode + '_auth_token').hide();
+                $('#' + self.inputContainerPrefix + self.apiMode + '_auth_token').show();
             });
         }
 
         this.maybeLockAccountSettings = function() {
-            var apiRows = $('#gaddon-setting-row-connected_to').siblings('#gaddon-setting-row-api_mode, #gaddon-setting-row-live_auth_token, #gaddon-setting-row-test_auth_token');
-
+            var apiRows = $( '#' + this.inputContainerPrefix + 'connected_to').siblings( '#' + this.inputContainerPrefix + 'api_mode, #' + this.inputContainerPrefix + 'live_auth_token, #' + this.inputContainerPrefix + 'test_auth_token' );
             // Display the Connect To field and hide the other Stripe Account settings (only for feed settings).
 			apiRows.hide();
 
@@ -226,8 +232,10 @@ window.GFStripeAdmin = null;
 				    alert( gforms_stripe_admin_strings.switch_account_disabled_message );
 				}
 				else {
-					apiRows.show('slow');
-					self.bindAPIModeChange();
+					$('#' + self.inputContainerPrefix + 'api_mode').show();
+					var hideMode = ( self.apiMode === 'live' ) ? 'test' : 'live';
+					$('#' + self.inputContainerPrefix + hideMode + '_auth_token').hide();
+					$('#' + self.inputContainerPrefix + self.apiMode + '_auth_token').show();
 					$(this).off('click').addClass('disabled');
 				}
             });
@@ -235,7 +243,7 @@ window.GFStripeAdmin = null;
             // Track if the feed settings were changed.
             $('table.gforms_form_settings').on('change', 'input, select', function() {
                 var inputName = $(this).attr('name');
-                if ( inputName !== '_gaddon_setting_api_mode' && inputName !== 'deauth_scope' && inputName !== '_gaddon_setting_transactionType' ) {
+                if ( inputName !== self.inputPrefix + '_api_mode' && inputName !== 'deauth_scope' && inputName !== self.inputPrefix + '_transactionType' ) {
                     self.accountSettingsLocked = true;
                 }
             });
@@ -262,7 +270,7 @@ window.GFStripeAdmin = null;
                 $('#webhooks_enabled').focus();
 
                 $([document.documentElement, document.body]).animate({
-                    scrollTop: ($("#gaddon-setting-row-api_mode").offset().top + 20)
+                    scrollTop: ($("#" + self.inputContainerPrefix + "api_mode").offset().top + 20)
                 }, 1000);
             }
         }

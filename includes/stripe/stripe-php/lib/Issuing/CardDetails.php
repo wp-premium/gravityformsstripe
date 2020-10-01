@@ -2,10 +2,8 @@
 
 namespace Stripe\Issuing;
 
-defined( 'ABSPATH' ) || die();
-
 /**
- * Class CardDetails
+ * Class CardDetails.
  *
  * @property string $id
  * @property string $object
@@ -14,10 +12,8 @@ defined( 'ABSPATH' ) || die();
  * @property int $exp_month
  * @property int $exp_year
  * @property string $number
- *
- * @package Stripe\Issuing
  */
 class CardDetails extends \Stripe\ApiResource
 {
-    const OBJECT_NAME = "issuing.card_details";
+    const OBJECT_NAME = 'issuing.card_details';
 }

@@ -2,10 +2,8 @@
 
 namespace Stripe;
 
-defined( 'ABSPATH' ) || die();
-
 /**
- * Class OrderItem
+ * Class OrderItem.
  *
  * @property string $object
  * @property int $amount
@@ -14,11 +12,8 @@ defined( 'ABSPATH' ) || die();
  * @property string $parent
  * @property int $quantity
  * @property string $type
- *
- * @package Stripe
  */
 class OrderItem extends StripeObject
 {
-
-    const OBJECT_NAME = "order_item";
+    const OBJECT_NAME = 'order_item';
 }

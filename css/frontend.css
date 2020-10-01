@@ -24,3 +24,35 @@
 .gform_wrapper div.gform_stripe_requires_action {
 	display: none;
 }
+
+.cc-details-container {
+	align-items: center;
+	display: flex;
+	justify-content: center;
+	position: relative;
+}
+
+.cc-placeholders {
+	align-items: center;
+	color: gray;
+	display: flex;
+	justify-content: center;
+	position: absolute;
+	width: 100%;
+}
+
+.cc-placeholders svg {
+	flex: 45px 0 1;
+}
+
+.cc-left-placeholder {
+	color: #9092B0;
+	flex: auto 1 1;
+}
+
+.cc-right-placeholder {
+	color: #9092B0;
+	flex: auto 1 1;
+	padding-right: 2%;
+	text-align: right;
+}
