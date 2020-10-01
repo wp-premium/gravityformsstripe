@@ -1,17 +1,17 @@
-# Copyright (C) 2020 rocketgenius
-# This file is distributed under the same license as the Gravity Forms Stripe Add-On plugin.
+# Copyright (C) 2020 Gravity Forms
+# This file is distributed under the GPL-2.0+.
 msgid ""
 msgstr ""
-"Project-Id-Version: Gravity Forms Stripe Add-On 3.4\n"
+"Project-Id-Version: Gravity Forms Stripe Add-On 3.8\n"
 "Report-Msgid-Bugs-To: https://gravityforms.com/support\n"
 "Last-Translator: Gravity Forms <support@gravityforms.com>\n"
 "Language-Team: Gravity Forms <support@gravityforms.com>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2020-02-19T17:09:22+00:00\n"
+"POT-Creation-Date: 2020-09-28T17:29:06+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"X-Generator: WP-CLI 2.2.0\n"
+"X-Generator: WP-CLI 2.4.0\n"
 "X-Domain: gravityformsstripe\n"
 
 #. Plugin Name of the plugin
@@ -19,7 +19,8 @@ msgid "Gravity Forms Stripe Add-On"
 msgstr ""
 
 #. Plugin URI of the plugin
-msgid "https://www.gravityforms.com"
+#. Author URI of the plugin
+msgid "https://gravityforms.com"
 msgstr ""
 
 #. Description of the plugin
@@ -27,587 +28,649 @@ msgid "Integrates Gravity Forms with Stripe, enabling end users to purchase good
 msgstr ""
 
 #. Author of the plugin
-msgid "rocketgenius"
+msgid "Gravity Forms"
 msgstr ""
 
-#. Author URI of the plugin
-msgid "https://www.rocketgenius.com"
-msgstr ""
-
-#: class-gf-stripe.php:306
+#: class-gf-stripe.php:341
 msgid "The credit card field will initiate once the payment condition is met."
 msgstr ""
 
-#: class-gf-stripe.php:307
+#: class-gf-stripe.php:342
 msgid "Please follow the instructions on the screen to validate your card."
 msgstr ""
 
-#: class-gf-stripe.php:326
+#: class-gf-stripe.php:361
 msgid "Error validating this key. Please try again later."
 msgstr ""
 
-#: class-gf-stripe.php:327
+#: class-gf-stripe.php:362
 msgid "In order to switch accounts, you must first save this feed by clicking the \"Update Settings\" button below"
 msgstr ""
 
-#: class-gf-stripe.php:329
+#: class-gf-stripe.php:364
 msgid "Are you sure you want to disconnect from Stripe for this website?"
 msgstr ""
 
-#: class-gf-stripe.php:330
+#: class-gf-stripe.php:365
 msgid "Are you sure you want to disconnect from Stripe for this feed?"
 msgstr ""
 
-#: class-gf-stripe.php:331
+#: class-gf-stripe.php:366
 msgid "Are you sure you want to disconnect all Gravity Forms sites connected to this Stripe account?"
 msgstr ""
 
-#: class-gf-stripe.php:447
-#: class-gf-stripe.php:4928
+#: class-gf-stripe.php:498
+#: class-gf-stripe.php:5261
 msgid "Access denied."
 msgstr ""
 
-#: class-gf-stripe.php:503
-#: class-gf-stripe.php:1357
+#: class-gf-stripe.php:545
+#: class-gf-stripe.php:1525
 msgid "Stripe Account"
 msgstr ""
 
-#: class-gf-stripe.php:510
+#: class-gf-stripe.php:552
 msgid "Payment Collection"
 msgstr ""
 
-#: class-gf-stripe.php:515
+#: class-gf-stripe.php:557
 msgid "Payment Collection Method"
 msgstr ""
 
-#: class-gf-stripe.php:520
+#: class-gf-stripe.php:562
 msgid "Stripe Credit Card Field (Elements, SCA-ready)"
 msgstr ""
 
-#: class-gf-stripe.php:522
+#: class-gf-stripe.php:564
 msgid "Stripe Credit Card Field (Elements)"
 msgstr ""
 
-#: class-gf-stripe.php:523
+#: class-gf-stripe.php:565
 msgid "Select this option to use a Credit Card field hosted by Stripe. This option offers the benefit of a streamlined user interface and the security of having the credit card field hosted on Stripe's servers. Selecting this option or \"Stripe Payment Form\" greatly simplifies the PCI compliance application process with Stripe."
 msgstr ""
 
 #. translators: 1. Open link tag 2. Close link tag
-#: class-gf-stripe.php:526
+#: class-gf-stripe.php:568
 msgid "Stripe Elements is ready for %1$sStrong Customer Authentication%2$s for European customers."
 msgstr ""
 
-#: class-gf-stripe.php:530
+#: class-gf-stripe.php:572
 msgid "Stripe Payment Form (Stripe Checkout, SCA-ready)"
 msgstr ""
 
-#: class-gf-stripe.php:532
+#: class-gf-stripe.php:574
 msgid "Stripe Payment Form"
 msgstr ""
 
-#: class-gf-stripe.php:533
+#: class-gf-stripe.php:575
 msgid "Select this option to collect all payment information in a separate page hosted by Stripe. This option is the simplest to implement since it doesn't require a credit card field in your form. Selecting this option or \"Stripe Credit Card Field\" greatly simplifies the PCI compliance application process with Stripe."
 msgstr ""
 
 #. translators: 1. Open link tag 2. Close link tag
-#: class-gf-stripe.php:536
+#: class-gf-stripe.php:578
 msgid "Stripe Checkout also supports Apple Pay and 3D secure, and is ready for %1$sStrong Customer Authentication%2$s for European customers."
 msgstr ""
 
-#: class-gf-stripe.php:572
-#: class-gf-stripe.php:575
+#: class-gf-stripe.php:624
+#: class-gf-stripe.php:627
 msgid "Connected to Stripe as"
 msgstr ""
 
-#: class-gf-stripe.php:575
+#: class-gf-stripe.php:627
 msgid "The Stripe account this feed is currently connected to."
 msgstr ""
 
-#: class-gf-stripe.php:579
+#: class-gf-stripe.php:631
 msgid "Mode"
 msgstr ""
 
-#: class-gf-stripe.php:584
+#: class-gf-stripe.php:636
 msgid "Live"
 msgstr ""
 
-#: class-gf-stripe.php:588
+#: class-gf-stripe.php:640
 msgid "Test"
 msgstr ""
 
-#: class-gf-stripe.php:628
-#: class-gf-stripe.php:663
+#: class-gf-stripe.php:682
+#: class-gf-stripe.php:717
 msgid "Test Publishable Key"
 msgstr ""
 
-#: class-gf-stripe.php:635
-#: class-gf-stripe.php:668
+#: class-gf-stripe.php:689
+#: class-gf-stripe.php:722
 msgid "Test Secret Key"
 msgstr ""
 
-#: class-gf-stripe.php:643
-#: class-gf-stripe.php:673
+#: class-gf-stripe.php:697
+#: class-gf-stripe.php:727
 msgid "Live Publishable Key"
 msgstr ""
 
-#: class-gf-stripe.php:650
-#: class-gf-stripe.php:678
+#: class-gf-stripe.php:704
+#: class-gf-stripe.php:732
 msgid "Live Secret Key"
 msgstr ""
 
-#: class-gf-stripe.php:689
+#: class-gf-stripe.php:744
 msgid "Webhooks Enabled?"
 msgstr ""
 
-#: class-gf-stripe.php:697
+#: class-gf-stripe.php:752
 msgid "I have enabled the Gravity Forms webhook URL in my Stripe account."
 msgstr ""
 
-#: class-gf-stripe.php:705
+#: class-gf-stripe.php:760
 msgid "Test Signing Secret"
 msgstr ""
 
-#: class-gf-stripe.php:717
+#: class-gf-stripe.php:769
 msgid "Live Signing Secret"
 msgstr ""
 
-#: class-gf-stripe.php:749
-msgid "View Instructions"
-msgstr ""
-
-#: class-gf-stripe.php:754
-msgid "Click the following link and log in to access your Stripe Webhooks management page:"
-msgstr ""
-
-#: class-gf-stripe.php:758
-msgid "Click the \"Add Endpoint\" button above the list of Webhook URLs."
-msgstr ""
-
-#: class-gf-stripe.php:760
-msgid "Enter the following URL in the \"URL to be called\" field:"
-msgstr ""
-
-#: class-gf-stripe.php:763
-msgid "If offered the choice, select the latest API version."
-msgstr ""
-
-#: class-gf-stripe.php:764
-msgid "Click the \"receive all events\" link."
-msgstr ""
-
-#: class-gf-stripe.php:765
-msgid "Click the \"Add Endpoint\" button to save the webhook."
-msgstr ""
-
-#: class-gf-stripe.php:766
-msgid "Copy the signing secret of the newly created webhook on Stripe and paste to the setting field."
-msgstr ""
-
-#: class-gf-stripe.php:784
-msgid "Select how payment information will be collected. You can select one of the Stripe hosted solutions (Stripe Credit Card or Stripe Checkout) which simplifies the PCI compliance process with Stripe."
-msgstr ""
-
-#: class-gf-stripe.php:785
-msgid "The Gravity Forms Credit Card Field has been deprecated in the Stripe Add-On from version 3.4. Forms that are currently using this field will continue to work. Refer to %1$sthis guide%2$s for more information about this change."
-msgstr ""
-
-#: class-gf-stripe.php:846
-msgid "Click here to authenticate with Stripe"
-msgstr ""
-
-#: class-gf-stripe.php:856
-msgid "You are currently logged in to Stripe using a deprecated authentication method."
-msgstr ""
-
-#. Translators: 1: Open strong tag 2: Close strong tag
-#: class-gf-stripe.php:858
-msgid "%1$sPlease login to your Stripe account via Stripe Connect using the button below.%2$s It is a more secure authentication method and will be required for upcoming features of the Stripe Add-on."
-msgstr ""
-
-#: class-gf-stripe.php:862
-msgid "%1$sLearn more%2$s about connecting with Stripe."
-msgstr ""
-
-#: class-gf-stripe.php:874
-msgid "Disconnect"
-msgstr ""
-
-#: class-gf-stripe.php:884
-msgid "Connected to Stripe as %1$s%2$s%3$s."
-msgstr ""
-
-#: class-gf-stripe.php:900
-msgid "Disconnect this %s only"
-msgstr ""
-
-#: class-gf-stripe.php:902
-msgid "Disconnect all Gravity Forms sites connected to this Stripe account"
-msgstr ""
-
-#: class-gf-stripe.php:914
+#: class-gf-stripe.php:836
 msgid "SSL Certificate Required"
 msgstr ""
 
 #. Translators: 1: Open link tag 2: Close link tag
-#: class-gf-stripe.php:916
-msgid "Make sure you have an SSL certificate installed and enabled, then %1$sclick here to continue%2$s."
+#: class-gf-stripe.php:838
+msgid "Make sure you have an SSL certificate installed and enabled, then %1$sclick here to reloaad the settings page%2$s."
 msgstr ""
 
-#: class-gf-stripe.php:963
+#: class-gf-stripe.php:864
+msgid "View Instructions"
+msgstr ""
+
+#: class-gf-stripe.php:869
+msgid "Click the following link and log in to access your Stripe Webhooks management page:"
+msgstr ""
+
+#: class-gf-stripe.php:873
+msgid "Click the \"Add Endpoint\" button above the list of Webhook URLs."
+msgstr ""
+
+#: class-gf-stripe.php:875
+msgid "Enter the following URL in the \"URL to be called\" field:"
+msgstr ""
+
+#: class-gf-stripe.php:878
+msgid "If offered the choice, select the latest API version."
+msgstr ""
+
+#: class-gf-stripe.php:879
+msgid "Click the \"receive all events\" link."
+msgstr ""
+
+#: class-gf-stripe.php:880
+msgid "Click the \"Add Endpoint\" button to save the webhook."
+msgstr ""
+
+#: class-gf-stripe.php:881
+msgid "Copy the signing secret of the newly created webhook on Stripe and paste to the setting field."
+msgstr ""
+
+#: class-gf-stripe.php:899
+msgid "Select how payment information will be collected. You can select one of the Stripe hosted solutions (Stripe Credit Card or Stripe Checkout) which simplifies the PCI compliance process with Stripe."
+msgstr ""
+
+#: class-gf-stripe.php:900
+msgid "The Gravity Forms Credit Card Field has been deprecated in the Stripe Add-On from version 3.4. Forms that are currently using this field will continue to work. Refer to %1$sthis guide%2$s for more information about this change."
+msgstr ""
+
+#: class-gf-stripe.php:939
+msgid "Click here to authenticate with Stripe"
+msgstr ""
+
+#: class-gf-stripe.php:949
+msgid "You are currently logged in to Stripe using a deprecated authentication method."
+msgstr ""
+
+#. Translators: 1: Open strong tag 2: Close strong tag
+#: class-gf-stripe.php:951
+msgid "%1$sPlease login to your Stripe account via Stripe Connect using the button below.%2$s It is a more secure authentication method and will be required for upcoming features of the Stripe Add-on."
+msgstr ""
+
+#: class-gf-stripe.php:955
+msgid "%1$sLearn more%2$s about connecting with Stripe."
+msgstr ""
+
+#: class-gf-stripe.php:966
+msgid "Disconnect"
+msgstr ""
+
+#: class-gf-stripe.php:976
+msgid "Connected to Stripe as %1$s%2$s%3$s."
+msgstr ""
+
+#: class-gf-stripe.php:992
+msgid "Disconnect this %s only"
+msgstr ""
+
+#: class-gf-stripe.php:994
+msgid "Disconnect all Gravity Forms sites connected to this Stripe account"
+msgstr ""
+
+#: class-gf-stripe.php:1097
 msgid "%1$s%2$s%3$s"
 msgstr ""
 
-#: class-gf-stripe.php:977
+#: class-gf-stripe.php:1112
 msgid "Switch Accounts"
 msgstr ""
 
 #. Translators: 1. Open link tag. 2. Close link tag.
-#: class-gf-stripe.php:993
+#: class-gf-stripe.php:1128
 msgid "Logo can be configured on %1$sStripe's branding page%2$s."
 msgstr ""
 
+#: class-gf-stripe.php:1152
+msgid "Unable to connect to Stripe due to mismatched state."
+msgstr ""
+
+#: class-gf-stripe.php:1201
+msgid "Unable to authenticate with Stripe."
+msgstr ""
+
 #. Translators: 1: Open link tag 2: Close link tag
-#: class-gf-stripe.php:1114
+#: class-gf-stripe.php:1266
 msgid "You are currently logged in to Stripe using a deprecated authentication method. %1$sRe-authenticate your Stripe account%2$s."
 msgstr ""
 
-#: class-gf-stripe.php:1193
+#: class-gf-stripe.php:1346
 msgid "You must add a Stripe Card field to your form before creating a feed. Let's go %sadd one%s!"
 msgstr ""
 
-#: class-gf-stripe.php:1219
+#: class-gf-stripe.php:1373
 msgid "Customer Information"
 msgstr ""
 
-#: class-gf-stripe.php:1228
-#: class-gf-stripe.php:1231
+#: class-gf-stripe.php:1382
+#: class-gf-stripe.php:1385
 msgid "Email"
 msgstr ""
 
-#: class-gf-stripe.php:1231
-#: class-gf-stripe.php:1392
+#: class-gf-stripe.php:1385
+#: class-gf-stripe.php:1560
 msgid "You can specify an email field and it will be sent to the Stripe Checkout screen as the customer's email."
 msgstr ""
 
-#: class-gf-stripe.php:1235
+#: class-gf-stripe.php:1389
 msgid "Description"
 msgstr ""
 
-#: class-gf-stripe.php:1240
-#: class-gf-stripe.php:1243
+#: class-gf-stripe.php:1394
+#: class-gf-stripe.php:1397
 msgid "Coupon"
 msgstr ""
 
-#: class-gf-stripe.php:1243
+#: class-gf-stripe.php:1397
 msgid "Select which field contains the coupon code to be applied to the recurring charge(s). The coupon must also exist in your Stripe Dashboard."
 msgstr ""
 
-#: class-gf-stripe.php:1243
+#: class-gf-stripe.php:1397
 msgid "If you use Stripe Checkout, the coupon won't be applied to your first invoice."
 msgstr ""
 
-#: class-gf-stripe.php:1253
+#: class-gf-stripe.php:1407
 msgid "You will see this data when viewing a customer page."
 msgstr ""
 
-#: class-gf-stripe.php:1255
+#: class-gf-stripe.php:1409
 msgid "You will see this data when viewing a payment page."
 msgstr ""
 
-#: class-gf-stripe.php:1262
-#: class-gf-stripe.php:1266
+#: class-gf-stripe.php:1416
+#: class-gf-stripe.php:1420
 msgid "Metadata"
 msgstr ""
 
-#: class-gf-stripe.php:1266
-msgid "You may send custom meta information to Stripe. A maximum of 20 custom keys may be sent. The key name must be 40 characters or less, and the mapped data will be truncated to 500 characters per requirements by Stripe. "
+#: class-gf-stripe.php:1420
+msgid "You may send custom meta information to Stripe. A maximum of 50 custom keys may be sent. The key name must be 40 characters or less, and the mapped data will be truncated to 500 characters per requirements by Stripe. "
 msgstr ""
 
-#: class-gf-stripe.php:1280
+#: class-gf-stripe.php:1434
+msgid "Trial"
+msgstr ""
+
+#: class-gf-stripe.php:1437
+msgid "Enable a trial period.  The user's recurring payment will not begin until after this trial period."
+msgstr ""
+
+#: class-gf-stripe.php:1444
 msgid "Trial Period"
 msgstr ""
 
-#: class-gf-stripe.php:1283
+#: class-gf-stripe.php:1450
+#: class-gf-stripe.php:1453
 msgid "days"
 msgstr ""
 
-#: class-gf-stripe.php:1293
-#: class-gf-stripe.php:1296
+#: class-gf-stripe.php:1461
+#: class-gf-stripe.php:1464
 msgid "Subscription Name"
 msgstr ""
 
-#: class-gf-stripe.php:1296
+#: class-gf-stripe.php:1464
 msgid "Enter a name for the subscription. It will be displayed on the payment form as well as the Stripe dashboard."
 msgstr ""
 
-#: class-gf-stripe.php:1306
+#: class-gf-stripe.php:1474
 msgid "Stripe Credit Card Field Settings"
 msgstr ""
 
-#: class-gf-stripe.php:1314
-#: class-gf-stripe.php:1315
+#: class-gf-stripe.php:1482
+#: class-gf-stripe.php:1483
 msgid "Billing Information"
 msgstr ""
 
-#: class-gf-stripe.php:1315
+#: class-gf-stripe.php:1483
 msgid "Map your Form Fields to the available listed fields. The address information will be sent to Stripe."
 msgstr ""
 
-#: class-gf-stripe.php:1327
+#: class-gf-stripe.php:1495
 msgid "Stripe Payment Form Settings"
 msgstr ""
 
-#: class-gf-stripe.php:1328
+#: class-gf-stripe.php:1496
 msgid "The following settings control information displayed on the Stripe hosted payment page that is displayed after the form is submitted."
 msgstr ""
 
-#: class-gf-stripe.php:1345
-#: class-gf-stripe.php:1347
+#: class-gf-stripe.php:1513
+#: class-gf-stripe.php:1515
 msgid "Stripe Receipt"
 msgstr ""
 
-#: class-gf-stripe.php:1347
+#: class-gf-stripe.php:1515
 msgid "Stripe can send a receipt via email upon payment. Select an email field to enable this feature."
 msgstr ""
 
-#: class-gf-stripe.php:1381
+#: class-gf-stripe.php:1549
 msgid "Logo"
 msgstr ""
 
-#: class-gf-stripe.php:1386
-#: class-gf-stripe.php:1392
+#: class-gf-stripe.php:1554
+#: class-gf-stripe.php:1560
 msgid "Customer Email"
 msgstr ""
 
-#: class-gf-stripe.php:1396
-#: class-gf-stripe.php:1398
+#: class-gf-stripe.php:1564
+#: class-gf-stripe.php:1566
 msgid "Billing Address"
 msgstr ""
 
-#: class-gf-stripe.php:1398
+#: class-gf-stripe.php:1566
 msgid "When enabled, Stripe Checkout will collect the customer's billing address for you."
 msgstr ""
 
-#: class-gf-stripe.php:1402
-#: class-gf-stripe.php:1583
-#: class-gf-stripe.php:1650
+#: class-gf-stripe.php:1570
+#: class-gf-stripe.php:1763
+#: class-gf-stripe.php:1826
 msgid "Enabled"
 msgstr ""
 
-#: class-gf-stripe.php:1406
+#: class-gf-stripe.php:1574
 msgid "Disabled"
 msgstr ""
 
-#: class-gf-stripe.php:1516
+#: class-gf-stripe.php:1696
 msgid "Do not send receipt"
 msgstr ""
 
-#: class-gf-stripe.php:1522
+#: class-gf-stripe.php:1702
 msgid "Do not set customer email"
 msgstr ""
 
-#: class-gf-stripe.php:1740
+#: class-gf-stripe.php:1916
 msgid "Please enter a valid number of days."
 msgstr ""
 
-#: class-gf-stripe.php:1787
+#: class-gf-stripe.php:1970
 msgid "A field has been mapped to a custom key without a name. Please enter a name for the custom key, remove the metadata item, or return the corresponding drop down to 'Select a Field'."
 msgstr ""
 
-#: class-gf-stripe.php:1790
+#: class-gf-stripe.php:1973
 msgid "The name of custom key %s is too long. Please shorten this to 40 characters or less."
 msgstr ""
 
-#: class-gf-stripe.php:1807
+#: class-gf-stripe.php:1991
 msgid "Please use the correct webhook signing secret, which should start with \"whsec_\"."
 msgstr ""
 
-#: class-gf-stripe.php:1824
+#: class-gf-stripe.php:2008
 msgid "day(s)"
 msgstr ""
 
-#: class-gf-stripe.php:1825
+#: class-gf-stripe.php:2009
 msgid "week(s)"
 msgstr ""
 
-#: class-gf-stripe.php:1826
+#: class-gf-stripe.php:2010
 msgid "month(s)"
 msgstr ""
 
-#: class-gf-stripe.php:1827
+#: class-gf-stripe.php:2011
 msgid "year(s)"
 msgstr ""
 
-#: class-gf-stripe.php:1872
+#: class-gf-stripe.php:2056
 msgid "Payment Completed"
 msgstr ""
 
-#: class-gf-stripe.php:1873
+#: class-gf-stripe.php:2057
 msgid "Payment Refunded"
 msgstr ""
 
-#: class-gf-stripe.php:1874
+#: class-gf-stripe.php:2058
 msgid "Payment Failed"
 msgstr ""
 
-#: class-gf-stripe.php:1875
+#: class-gf-stripe.php:2059
 msgid "Subscription Created"
 msgstr ""
 
-#: class-gf-stripe.php:1876
+#: class-gf-stripe.php:2060
 msgid "Subscription Canceled"
 msgstr ""
 
-#: class-gf-stripe.php:1877
+#: class-gf-stripe.php:2061
 msgid "Subscription Payment Added"
 msgstr ""
 
-#: class-gf-stripe.php:1878
+#: class-gf-stripe.php:2062
 msgid "Subscription Payment Failed"
 msgstr ""
 
-#: class-gf-stripe.php:2199
-#: class-gf-stripe.php:2245
-#: class-gf-stripe.php:2287
+#: class-gf-stripe.php:2403
+#: class-gf-stripe.php:2449
+#: class-gf-stripe.php:2491
 msgid "Unknown"
 msgstr ""
 
-#: class-gf-stripe.php:2208
-#: class-gf-stripe.php:2290
+#: class-gf-stripe.php:2412
+#: class-gf-stripe.php:2494
 msgid "Card type (%s) is not supported. Please enter one of the supported credit cards."
 msgstr ""
 
-#: class-gf-stripe.php:2306
+#: class-gf-stripe.php:2510
 msgid "There was a problem with your submission."
 msgstr ""
 
-#: class-gf-stripe.php:2441
-#: class-gf-stripe.php:3836
+#: class-gf-stripe.php:2643
+#: class-gf-stripe.php:4165
 msgid "3D Secure authentication is required for this payment. Following the instructions on the page to move forward."
 msgstr ""
 
-#: class-gf-stripe.php:2447
-#: class-gf-stripe.php:3232
-#: class-gf-stripe.php:3825
+#: class-gf-stripe.php:2647
+#: class-gf-stripe.php:3451
+#: class-gf-stripe.php:4154
 msgid "Your payment attempt has failed. Please enter your card details and try again."
 msgstr ""
 
-#: class-gf-stripe.php:2449
+#: class-gf-stripe.php:2649
 msgid "The payment has been canceled"
 msgstr ""
 
-#: class-gf-stripe.php:2584
+#: class-gf-stripe.php:2774
 msgid "Payment with Discounts"
 msgstr ""
 
-#: class-gf-stripe.php:2651
+#: class-gf-stripe.php:2834
 msgid "Setup Fee"
 msgstr ""
 
-#: class-gf-stripe.php:2731
+#: class-gf-stripe.php:2911
 msgid "Unable to create Stripe Checkout session."
 msgstr ""
 
-#: class-gf-stripe.php:2943
+#: class-gf-stripe.php:3100
+msgid "Cannot get payment intent data."
+msgstr ""
+
+#: class-gf-stripe.php:3118
+msgid "Cannot update payment intent data."
+msgstr ""
+
+#: class-gf-stripe.php:3134
+msgid "Cannot capture payment intent data."
+msgstr ""
+
+#: class-gf-stripe.php:3139
 msgid "Cannot capture the payment; the payment intent status is "
 msgstr ""
 
-#: class-gf-stripe.php:3440
-#: class-gf-stripe.php:4324
+#: class-gf-stripe.php:3156
+#: class-gf-stripe.php:3191
+msgid "Unable to capture the charge."
+msgstr ""
+
+#: class-gf-stripe.php:3175
+msgid "Unable to save the charge."
+msgstr ""
+
+#: class-gf-stripe.php:3241
+msgid "Failed to get the customer ID from Stripe."
+msgstr ""
+
+#: class-gf-stripe.php:3703
+#: class-gf-stripe.php:4653
 msgid "Subscription payment has been paid. Amount: %s. Subscription Id: %s"
 msgstr ""
 
-#: class-gf-stripe.php:3995
+#: class-gf-stripe.php:4326
 msgid "Unable to authorize card. No response from Stripe.js."
 msgstr ""
 
-#: class-gf-stripe.php:4292
-#: class-gf-stripe.php:4351
+#: class-gf-stripe.php:4621
+#: class-gf-stripe.php:4690
 msgid "Subscription line item not found in request"
 msgstr ""
 
-#: class-gf-stripe.php:4435
+#: class-gf-stripe.php:4779
 msgid "Entry for %s id: %s was not found. Webhook cannot be processed."
 msgstr ""
 
-#: class-gf-stripe.php:4514
+#: class-gf-stripe.php:4843
 msgid "Invalid request. Webhook could not be processed."
 msgstr ""
 
-#: class-gf-stripe.php:4520
+#: class-gf-stripe.php:4849
 msgid "Test webhook succeeded. Your Stripe Account and Stripe Add-On are configured correctly to process webhooks."
 msgstr ""
 
-#: class-gf-stripe.php:5008
+#: class-gf-stripe.php:5341
 msgid "Setup fee has been paid."
 msgstr ""
 
-#: class-gf-stripe.php:5010
+#: class-gf-stripe.php:5343
 msgid "Trial has been paid."
 msgstr ""
 
-#: class-gf-stripe.php:5261
+#: class-gf-stripe.php:5538
+msgid "You're being redirected to the hosted Checkout page on Stripe..."
+msgstr ""
+
+#: class-gf-stripe.php:5601
 msgid "Entry ID: %d"
 msgstr ""
 
-#: class-gf-stripe.php:5265
+#: class-gf-stripe.php:5605
 msgid "Product: %s"
 msgid_plural "Products: %s"
 msgstr[0] ""
 msgstr[1] ""
 
-#: class-gf-stripe.php:5589
+#: class-gf-stripe.php:5929
 msgid "%1$sYour Gravity Forms Stripe Add-On has been updated to 3.0, and now supports Apple Pay and Strong Customer Authentication (SCA/PSD2).%2$s%3$sNOTE:%4$s Stripe has changed Stripe Checkout from a modal display to a full page, and we have altered some existing Stripe hooks. Carefully review %5$sthis guide%6$s to see if your setup may be affected.%7$s"
 msgstr ""
 
-#: class-gf-stripe.php:5602
+#: class-gf-stripe.php:5942
 msgid "%1$sYour Gravity Forms Stripe Add-On has been updated to 3.0, and now supports Apple Pay and Strong Customer Authentication (SCA/PSD2).%2$s%3$sNOTE:%4$s Apple Pay and SCA are only supported by the Stripe Checkout payment collection method. Refer to %5$sthis guide%6$s for more information on payment methods and SCA.%7$s"
 msgstr ""
 
-#: class-gf-stripe.php:5692
+#: class-gf-stripe.php:6032
 msgid "%1$sYour Gravity Forms Stripe Add-On has been updated to 3.4, and now supports Strong Customer Authentication (SCA/PSD2).%2$s%3$sRefer to %4$sthis guide%5$s for more information on payment methods and SCA.%6$s"
 msgstr ""
 
-#: class-gf-stripe.php:5703
+#: class-gf-stripe.php:6043
 msgid "%1$sYour Gravity Forms Stripe Add-On has been updated to 3.4, and it no longer supports the Gravity Forms Credit Card Field in new forms (current integrations can still work as usual).%2$s%3$sRefer to %4$sthis guide%5$s for more information about this change.%6$s"
 msgstr ""
 
 #. translators: PaymentIntent status.
-#: class-gf-stripe.php:5774
-#: class-gf-stripe.php:5819
+#: class-gf-stripe.php:6128
+#: class-gf-stripe.php:6173
 msgid "PaymentIntent status: %s is invalid."
 msgstr ""
 
-#: class-gf-stripe.php:5945
+#: class-gf-stripe.php:6345
 msgid "We are not able to process your payment request at the moment. Please try again later."
+msgstr ""
+
+#: class-gf-stripe.php:6379
+msgid "Unnamed account"
 msgstr ""
 
 #: includes/class-gf-field-stripe-creditcard.php:33
 msgid "Stripe Card"
 msgstr ""
 
-#: includes/class-gf-field-stripe-creditcard.php:46
+#: includes/class-gf-field-stripe-creditcard.php:57
+msgid "Allows accepting credit card information to make payments via Stripe payment gateway."
+msgstr ""
+
+#: includes/class-gf-field-stripe-creditcard.php:70
 msgid "Credit Card"
 msgstr ""
 
-#: includes/class-gf-field-stripe-creditcard.php:46
-#: includes/class-gf-field-stripe-creditcard.php:199
+#: includes/class-gf-field-stripe-creditcard.php:70
+#: includes/class-gf-field-stripe-creditcard.php:233
 msgid "Card Details"
 msgstr ""
 
-#: includes/class-gf-field-stripe-creditcard.php:46
+#: includes/class-gf-field-stripe-creditcard.php:70
 msgid "Card Type"
 msgstr ""
 
-#: includes/class-gf-field-stripe-creditcard.php:46
-#: includes/class-gf-field-stripe-creditcard.php:204
+#: includes/class-gf-field-stripe-creditcard.php:70
+#: includes/class-gf-field-stripe-creditcard.php:238
 msgid "Cardholder Name"
 msgstr ""
 
-#: includes/class-gf-field-stripe-creditcard.php:51
+#: includes/class-gf-field-stripe-creditcard.php:75
 msgid "Only one Stripe Card field can be added to the form"
 msgstr ""
 
-#: includes/class-gf-field-stripe-creditcard.php:331
+#: includes/class-gf-field-stripe-creditcard.php:302
+msgid "Card Number"
+msgstr ""
+
+#: includes/class-gf-field-stripe-creditcard.php:303
+msgid "MM/YY"
+msgstr ""
+
+#: includes/class-gf-field-stripe-creditcard.php:303
+msgid "CVC"
+msgstr ""
+
+#: includes/class-gf-field-stripe-creditcard.php:428
 msgid "This page is unsecured. Do not enter a real credit card number! Use this field only for testing purposes. "
 msgstr ""

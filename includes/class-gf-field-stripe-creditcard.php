@@ -34,6 +34,30 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 	}
 
 	/**
+	 * Returns the field's form editor icon.
+	 *
+	 * This could be an icon url or a dashicons class.
+	 *
+	 * @since 3.8
+	 *
+	 * @return string
+	 */
+	public function get_form_editor_field_icon() {
+		return gf_stripe()->get_base_url() . '/images/menu-icon.svg';
+	}
+
+	/**
+	 * Returns the field's form editor description.
+	 *
+	 * @since 3.8
+	 *
+	 * @return string
+	 */
+	public function get_form_editor_field_description() {
+		return esc_attr__( 'Allows accepting credit card information to make payments via Stripe payment gateway.', 'gravityformsstripe' );
+	}
+
+	/**
 	 * Returns the scripts to be included for this field type in the form editor.
 	 *
 	 * @since  2.6
@@ -74,6 +98,16 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 				jQuery('.sub_labels_setting .field_custom_inputs_ui tr:eq(2) td:eq(2) input, .sub_labels_setting .field_custom_inputs_ui tr:eq(1) td:eq(2) input').prop('disabled', isHidden);
 	        });
 		}
+		});";
+
+		$js .= "gform.addAction('gform_post_load_field_settings', function ([field, form]) {
+			if ( field['type'] === 'stripe_creditcard' ) {	        
+				// Hide #field_settings when the field has error conditions.
+				// This is called right after the settings are shown. So that makes it feel like there's no settings.
+				if ( jQuery('.gform_stripe_card_error').length ) {
+					HideSettings( 'field_settings' );
+				}
+			}
 		});";
 
 		return $js;
@@ -205,44 +239,92 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 		$cardholder_name_sub_label  = gf_apply_filters( array( 'gform_card_name', $form_id, $this->id ), $cardholder_name_sub_label, $form_id );
 		$cardholder_name_placehoder = $this->get_input_placeholder_attribute( $cardholder_name_input );
 
+		// Prepare the values for checking the Stripe Card field error.
+		$settings_url            = add_query_arg( array(
+			'page'    => 'gf_settings',
+			'subview' => gf_stripe()->get_slug(),
+		), admin_url( 'admin.php' ) );
+		$feed_url                = add_query_arg( array(
+			'page'    => 'gf_edit_forms',
+			'view'    => 'settings',
+			'subview' => gf_stripe()->get_slug(),
+			'id'      => $form_id,
+		), admin_url( 'admin.php' ) );
+		$api_key                 = gf_stripe()->get_publishable_api_key();
+		$stripe_checkout_enabled = gf_stripe()->is_stripe_checkout_enabled();
+		$no_stripe_feed          = ! gf_stripe()->has_feed( $form_id );
+
 		// If we are in the form editor, display a placeholder field.
 		if ( $is_admin ) {
+			// Display the no Publishable Key error.
+			if ( empty( $api_key ) ) {
+				/* translators: 1. Open div tag 2. Close div tag 3. Open link tag 4. Close link tag */
+				$api_key_error = esc_html__( '%1$sPlease check your %3$sStripe API Settings%4s. Your Publishable Key is empty.%2$s' );
+
+				return $this->get_card_error_message( $api_key_error, $settings_url );
+			}
+
+			// Display the Stripe Checkout error.
+			if ( $stripe_checkout_enabled ) {
+				/* translators: 1. Open div tag 2. Close div tag 3. Open link tag 4. Close link tag */
+				$stripe_checkout_enabled_error = esc_html__( '%1$sThe Stripe Card field cannot work when the %3$sPayment Collection Method%4$s is set to Stripe Payment Form (Stripe Checkout).%2$s' );
+
+				return $this->get_card_error_message( $stripe_checkout_enabled_error, $settings_url );
+			}
+
+			// Display the no Stripe feed error.
+			if ( $no_stripe_feed ) {
+				/* translators: 1. Open div tag 2. Close div tag 3. Open link tag 4. Close link tag */
+				$no_stripe_feed_error = esc_html__( '%1$sPlease check if you have activated a %3$sStripe feed%4$s for your form.%2$s' );
+
+				return $this->get_card_error_message( $no_stripe_feed_error, $feed_url );
+			}
+
 			$style = ( $is_admin && $hide_cardholder_name ) ? "style='display:none;'" : '';
 
-			$cc_input = '
-				<style type="text/css">
-					.cc-cardnumber { width:410px; padding:7px;}
-					.cc-group { position: relative; }
-					.cc-group:before {
-					  content: ""; position: absolute; left: 10px; top: 0; bottom: 0; width: 20px; 
-					  background: url("data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB3aWR0aD0iMjJweCIgaGVpZ2h0PSIxNHB4IiB2aWV3Qm94PSIwIDAgMjIgMTQiIHZlcnNpb249IjEuMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayI+CiAgICA8IS0tIEdlbmVyYXRvcjogU2tldGNoIDUyLjIgKDY3MTQ1KSAtIGh0dHA6Ly93d3cuYm9oZW1pYW5jb2RpbmcuY29tL3NrZXRjaCAtLT4KICAgIDx0aXRsZT5Hcm91cDwvdGl0bGU+CiAgICA8ZGVzYz5DcmVhdGVkIHdpdGggU2tldGNoLjwvZGVzYz4KICAgIDxnIGlkPSJQYWdlLTEiIHN0cm9rZT0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIxIiBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPgogICAgICAgIDxnIGlkPSJHcm91cCI+CiAgICAgICAgICAgIDxyZWN0IGlkPSJSZWN0YW5nbGUiIGZpbGw9IiNEQ0RGRTYiIHg9IjAiIHk9IjAiIHdpZHRoPSIyMiIgaGVpZ2h0PSIxNCIgcng9IjIiPjwvcmVjdD4KICAgICAgICAgICAgPHJlY3QgaWQ9IlJlY3RhbmdsZSIgZmlsbD0iI0IyQjhDNiIgeD0iMyIgeT0iMTAiIHdpZHRoPSIzIiBoZWlnaHQ9IjEiPjwvcmVjdD4KICAgICAgICAgICAgPHJlY3QgaWQ9IlJlY3RhbmdsZS1Db3B5IiBmaWxsPSIjQjJCOEM2IiB4PSI3IiB5PSIxMCIgd2lkdGg9IjMiIGhlaWdodD0iMSI+PC9yZWN0PgogICAgICAgICAgICA8cmVjdCBpZD0iUmVjdGFuZ2xlLUNvcHktMiIgZmlsbD0iI0IyQjhDNiIgeD0iMTEiIHk9IjEwIiB3aWR0aD0iMyIgaGVpZ2h0PSIxIj48L3JlY3Q+CiAgICAgICAgICAgIDxyZWN0IGlkPSJSZWN0YW5nbGUtQ29weS0zIiBmaWxsPSIjQjJCOEM2IiB4PSIxNSIgeT0iMTAiIHdpZHRoPSIzIiBoZWlnaHQ9IjEiPjwvcmVjdD4KICAgICAgICAgICAgPHJlY3QgaWQ9IlJlY3RhbmdsZSIgZmlsbD0iI0ZGRkZGRiIgeD0iMyIgeT0iNCIgd2lkdGg9IjUiIGhlaWdodD0iMyI+PC9yZWN0PgogICAgICAgIDwvZz4KICAgIDwvZz4KPC9zdmc+") center / contain no-repeat;
-					}
-				</style>
-				
-				<div class="ginput_complex' . $class_suffix . ' ginput_container ginput_container_creditcard">';
+			$cc_input = '<div class="ginput_complex' . $class_suffix . ' ginput_container ginput_container_creditcard">';
 
+			$cc_details_input = '
+				<div class="cc-details-container">
+					<div class="cc-placeholders">
+						<svg width="22px" height="14px" viewBox="0 0 22 14" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+							<g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+								<g id="Group">
+									<rect id="Rectangle" fill="#DCDFE6" x="0" y="0" width="22" height="14" rx="2"></rect>
+									<rect id="Rectangle" fill="#B2B8C6" x="3" y="10" width="3" height="1"></rect>
+									<rect id="Rectangle-Copy" fill="#B2B8C6" x="7" y="10" width="3" height="1"></rect>
+									<rect id="Rectangle-Copy-2" fill="#B2B8C6" x="11" y="10" width="3" height="1"></rect>
+									<rect id="Rectangle-Copy-3" fill="#B2B8C6" x="15" y="10" width="3" height="1"></rect>
+									<rect id="Rectangle" fill="#FFFFFF" x="3" y="4" width="5" height="3"></rect>
+								</g>
+							</g>
+						</svg>
+						<span class="cc-left-placeholder">' . esc_html_e( 'Card Number', 'gravityformsstripe' ) . '</span>
+						<span class="cc-right-placeholder">' . esc_html_e( 'MM/YY', 'gravityformsstripe' ) . '&nbsp;&nbsp;&nbsp;' . esc_html_e( 'CVC', 'gravityformsstripe' ) . '</span>
+					</div>
+					<input id="' . $field_id . '_1" ' . $disabled_text . ' type="text" class="cc-cardnumber">
+				</div>';
 			if ( $is_sub_label_above ) {
 				$cc_input .= '
-					<label for="' . $field_id . '_1" id="' . $field_id . '_1_label" ' . $sub_label_class_attribute . ' ' . $style . '>' . $card_details_sub_label . '</label>
-					<div class="cc-group">
-						<input id="' . $field_id . '_1" ' . $disabled_text . ' type="text"
-						placeholder="        Card Number                                                                           MM/YY    CVC" class="cc-cardnumber">
-					</div>
-					<div id="' . $field_id . '_5_container" ' . $style . '>
+					<span class="cc-group ginput_full" id="' .$field_id. '_1_container">
+						<label for="' . $field_id . '_1" id="' . $field_id . '_1_label" ' . $sub_label_class_attribute . ' ' . $style . '>' . $card_details_sub_label . '</label>
+						' . $cc_details_input . '
+					</span>
+					
+					<span class="ginput_full" id="' . $field_id . '_5_container" ' . $style . '>
 						<label for="' . $field_id . '_5" id="' . $field_id . '_5_label" ' . $sub_label_class_attribute . '>' . $cardholder_name_sub_label . '</label>
 						<input type="text" class="ginput_full" name="input_' . $id . '.5" id="' . $field_id . '_5" value="" style="padding:8px;" ' . $disabled_text . ' ' . $cardholder_name_placehoder . '>
-					</div>';
+					</span>';
 			} else {
 				$cc_input .= '
-					<div class="cc-group">
-						<input id="' . $field_id . '_1" ' . $disabled_text . ' type="text"
-						placeholder="        Card Number                                                                           MM/YY    CVC" class="cc-cardnumber">
-					</div>
-					<label for="' . $field_id . '_1" id="' . $field_id . '_1_label" ' . $sub_label_class_attribute . ' ' . $style . '>' . $card_details_sub_label . '</label>
-					<div id="' . $field_id . '_5_container" ' . $style . '>
+					<span class="cc-group ginput_full" id="' .$field_id. '_1_container">
+						'. $cc_details_input .'
+						<label for="' . $field_id . '_1" id="' . $field_id . '_1_label" ' . $sub_label_class_attribute . ' ' . $style . '>' . $card_details_sub_label . '</label>			
+					</span>
+					<span class="ginput_full" id="' . $field_id . '_5_container" ' . $style . '>
 						<input type="text" class="ginput_full" name="input_' . $id . '.5" id="' . $field_id . '_5" value="" style="padding:8px;" ' . $disabled_text . ' ' . $cardholder_name_placehoder . '>
 						<label for="' . $field_id . '_5" id="' . $field_id . '_5_label" ' . $sub_label_class_attribute . '>' . $cardholder_name_sub_label . '</label>
-					</div>';
+					</span>';
 			}
 
 			$cc_input .= '</div>';
@@ -254,10 +336,25 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 				$cardholder_name = esc_attr( rgget( $this->id . '.5', $value ) );
 			}
 
-			$api_key    = gf_stripe()->get_publishable_api_key();
 			$card_error = '';
+
+			// Display the no Publishable Key error.
 			if ( empty( $api_key ) ) {
-				$card_error = sprintf( esc_html__( '%sPlease check your Stripe API Settings. Your Publishable Key is empty.%s' ), '<div class="gfield_description validation_message">', '</div>' );
+				/* translators: 1. Open div tag 2. Close div tag */
+				$api_key_error        = esc_html__( '%1$sPlease check your Stripe API Settings. Your Publishable Key is empty.%2$s' );
+				$card_error           = $this->get_card_error_message( $api_key_error );
+				$hide_cardholder_name = true;
+			} elseif ( $stripe_checkout_enabled ) {
+				// Display the Stripe Checkout error.
+				/* translators: 1. Open div tag 2. Close div tag */
+				$stripe_checkout_enabled_error = esc_html__( '%1$sThe Stripe Card field cannot work when the Payment Collection Method is set to Stripe Payment Form (Stripe Checkout).%2$s' );
+				$card_error                    = $this->get_card_error_message( $stripe_checkout_enabled_error );
+				$hide_cardholder_name          = true;
+			} elseif ( $no_stripe_feed ) {
+				// Display the no Stripe feed error.
+				/* translators: 1. Open div tag 2. Close div tag */
+				$no_stripe_feed_error = esc_html__( '%1$sPlease check if you have activated a Stripe feed for your form.%2$s' );
+				$card_error           = $this->get_card_error_message( $no_stripe_feed_error );
 				$hide_cardholder_name = true;
 			}
 
@@ -412,7 +509,7 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 			$value              = str_pad( $value, $card_number_length, 'X', STR_PAD_LEFT );
 		} elseif ( $input_id == '4' ) {
 
-			$value = rgpost( "input_{$field_id_token}_4" );
+			$value = $this->get_card_name( rgpost( "input_{$field_id_token}_4" ) );
 
 			if ( ! $value ) {
 				$card_number = rgpost( "input_{$field_id_token}_1" );
@@ -425,6 +522,50 @@ class GF_Field_Stripe_CreditCard extends GF_Field {
 
 		return $this->sanitize_entry_value( $value, $form['id'] );
 	}
+
+	/**
+	 * Returns the full name for the supplied card brand.
+	 *
+	 * @since 3.5
+	 *
+	 * @param string $slug The card brand supplied by Stripe.js.
+	 *
+	 * @return string
+	 */
+	public function get_card_name( $slug ) {
+		if ( empty( $slug ) ) {
+			return $slug;
+		}
+
+		$card_types = GFCommon::get_card_types();
+
+		foreach ( $card_types as $card ) {
+			if ( rgar( $card, 'slug' ) === $slug ) {
+				return rgar( $card, 'name' );
+			}
+		}
+
+		return $slug;
+	}
+
+	/**
+	 * Display the Stripe Card error message.
+	 *
+	 * @since 3.5
+	 *
+	 * @param string $message The error message.
+	 * @param string $url     The settings URL.
+	 *
+	 * @return string
+	 */
+	private function get_card_error_message( $message, $url = '' ) {
+		if ( $url ) {
+			return sprintf( $message, '<div class="gform_stripe_card_error">', '</div>', '<a href="' . $url . '" target="_blank">', '</a>' );
+		}
+
+		return sprintf( $message, '<div class="gfield_description validation_message">', '</div>' );
+	}
+
 }
 
 GF_Fields::register( new GF_Field_Stripe_CreditCard() );

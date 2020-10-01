@@ -2,10 +2,8 @@
 
 namespace Stripe\Util;
 
-defined( 'ABSPATH' ) || die();
-
-use IteratorAggregate;
 use ArrayIterator;
+use IteratorAggregate;
 
 class Set implements IteratorAggregate
 {
@@ -36,7 +34,7 @@ class Set implements IteratorAggregate
 
     public function toArray()
     {
-        return array_keys($this->_elts);
+        return \array_keys($this->_elts);
     }
 
     public function getIterator()

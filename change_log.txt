@@ -1,3 +1,38 @@
+### 3.8 | 2020-09-28
+- Added support for Gravity Forms 2.5.
+- Updated to support 50 metadata mappings.
+- Updated the Stripe SDK to version 7.36.1.
+- Fixed fatal errors which could occur if the Stripe API returned an error such as the payment amount not meeting the minimum amount for the currency.
+- Fixed subscription issues when a coupon is used.
+- Fixed stripe card field preview in the form editor.
+- Fixed an issue where the js.stripe.com/v3 script could be enqueued when not required.
+- Fixed an issue which results in charging the wrong amount when creating a subscription plan using a plan name that already exists on stripe.
+- Fixed an issue where an "Unable to authorize card. No response from Stripe.js." validation error occurs for forms using the Stripe Card and Invisible type reCAPTCHA fields.
+
+
+### 3.7 | 2020-07-16
+- Fixed an issue where connecting to Stripe in live mode would revert to test mode.
+
+
+### 3.6 | 2020-07-14
+- Added security enhancements.
+- Updated the Stripe card field scripts to use the credit card field input ID as the selector when mounting Stripe Elements.
+- Fixed a JavaScript error which could occur in some environments for the Stripe Card field scripts when using the form total as the payment amount.
+
+
+### 3.5 | 2020-05-21
+- Added error messages to the Stripe Card field when no Stripe feed activated or Stripe Checkout is enabled.
+- Added accessibility enhancements to the Stripe Card Element so the screen readers can announce validation errors.
+- Added the *[gform_stripe_payment_intent_pre_create](https://docs.gravityforms.com/gform_stripe_payment_intent_pre_create/)* filter to allow modifying the payment data before creating a new payment intent.
+- Fixed the Stripe Checkout redirection issue for AJAX embedded forms.
+- Fixed the card type input of the Stripe Card field saving the brand slug returned by Stripe.js instead of the full brand name.
+- Fixed an issue where the credit card info is not updated after the customer replaces card details in multi-page forms.
+- Fixed an issue where the Stripe feed list would display a misleading configuration message in certain situations.
+- Fixed an issue with Stripe Elements where some amounts can lose precision when converted to the smallest unit of the currency.
+- Fixed PHP 7.4 notices on the settings and feed configuration pages.
+- Fixed a JavaScript error which could occur in some environments for the Stripe Card field scripts when using the form total as the payment amount.
+
+
 ### 3.4 | 2020-02-19
 - Added security enhancements.
 - Added support for Strong Customer Authentication (SCA) to the Stripe Card field (Stripe Elements) payment collection method.

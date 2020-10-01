@@ -69,7 +69,7 @@ window.GFStripe = null;
 
 								// If Stripe Card is already on the page (AJAX failed validation, or switch frontend feeds),
 								// Destroy the card field so we can re-initiate it.
-								if ( elements._elements.indexOf('card') >= 0 ) {
+								if ( card != null && card.hasOwnProperty( '_destroyed' ) && card._destroyed === false ) {
 									card.destroy();
 								}
 
@@ -97,7 +97,7 @@ window.GFStripe = null;
 									}
 									GFStripeObj.scaActionHandler(stripe, formId);
 								} else {
-									card.mount(GFStripeObj.GFCCField.selector);
+									card.mount('#' + GFStripeObj.GFCCField.attr('id'));
 
 									card.on('change', function (event) {
 										GFStripeObj.displayStripeCardError(event);
@@ -115,7 +115,7 @@ window.GFStripe = null;
 
 				if (!feedActivated) {
 					if (GFStripeObj.stripe_payment === 'elements') {
-						if ( elements !== null && elements._elements.indexOf('card') >= 0 ) {
+						if ( elements != null && card === elements.getElement( 'card' ) ) {
 							card.destroy();
 						}
 
@@ -125,6 +125,8 @@ window.GFStripe = null;
 
 						var cardErrors = GFStripeObj.GFCCField.next('.validation_message');
 						cardErrors.html( gforms_stripe_frontend_strings.no_active_frontend_feed );
+
+						wp.a11y.speak( gforms_stripe_frontend_strings.no_active_frontend_feed );
 					}
 
 					// remove Stripe fields and form status when Stripe feed deactivated
@@ -154,7 +156,7 @@ window.GFStripe = null;
 			// bind Stripe functionality to submit event
 			$('#gform_' + this.formId).on('submit', function (event) {
 				// by checking if GFCCField is hidden, we can continue to the next page in a multi-page form
-				if (!feedActivated || $(this).data('gfstripesubmitting') || $('#gform_save_' + GFStripeObj.formId).val() == 1 || (!GFStripeObj.isLastPage() && 'elements' !== GFStripeObj.stripe_payment) || gformIsHidden(GFStripeObj.GFCCField) || GFStripeObj.maybeHitRateLimits()) {
+				if (!feedActivated || $(this).data('gfstripesubmitting') || $('#gform_save_' + GFStripeObj.formId).val() == 1 || (!GFStripeObj.isLastPage() && 'elements' !== GFStripeObj.stripe_payment) || gformIsHidden(GFStripeObj.GFCCField) || GFStripeObj.maybeHitRateLimits() || GFStripeObj.invisibleCaptchaPending()) {
 					return;
 				} else {
 					event.preventDefault();
@@ -173,7 +175,7 @@ window.GFStripe = null;
 								return total;
 							}, 51);
 
-							gformCalculateTotalPrice(formId);
+							gformCalculateTotalPrice(GFStripeObj.formId);
 						}
 
 						GFStripeObj.updatePaymentAmount();
@@ -191,11 +193,8 @@ window.GFStripe = null;
 						}
 
 						if ( activeFeed.type === 'product' ) {
-							if ( !GFStripeObj.hasPaymentIntent || $('.requires_payment_method').length ) {
-								GFStripeObj.createPaymentMethod(stripe, card);
-							} else {
-								GFStripeObj.elementsResponseHandler(GFStripeObj.stripeResponse);
-							}
+							// Create a new payment method when every time the Stripe Elements is resubmitted.
+							GFStripeObj.createPaymentMethod(stripe, card);
 						} else {
 							GFStripeObj.createToken(stripe, card);
 						}
@@ -275,7 +274,7 @@ window.GFStripe = null;
 				GFStripeObj = this,
 				activeFeed = this.activeFeed,
 			    currency = gform.applyFilters( 'gform_stripe_currency', this.currency, this.formId ),
-				amount = (0 === gf_global.gf_currency_config.decimals) ? window['gform_stripe_amount_' + this.formId] : window['gform_stripe_amount_' + this.formId] * 100;
+				amount = (0 === gf_global.gf_currency_config.decimals) ? window['gform_stripe_amount_' + this.formId] : gformRoundPrice( window['gform_stripe_amount_' + this.formId] * 100 );
 
 			if (response.error) {
 				// display error below the card field.
@@ -311,7 +310,7 @@ window.GFStripe = null;
 						data: {
 							action: "gfstripe_create_payment_intent",
 							nonce: gforms_stripe_frontend_strings.create_payment_intent_nonce,
-							payment_method: response.paymentMethod.id,
+							payment_method: response.paymentMethod,
 							currency: currency,
 							amount: amount,
 							feed_id: activeFeed.feedId
@@ -341,9 +340,10 @@ window.GFStripe = null;
 				}
 			} else {
 				if (activeFeed.type === 'product') {
-					if (response.hasOwnProperty('amount') && response.amount === amount) {
-						form.submit();
-					} else {
+					if (response.hasOwnProperty('paymentMethod')) {
+						$('#gf_stripe_credit_card_last_four').val(response.paymentMethod.card.last4);
+						$('#stripe_credit_card_type').val(response.paymentMethod.card.brand);
+
 						$.ajax({
 							async: false,
 							url: gforms_stripe_frontend_strings.ajaxurl,
@@ -353,7 +353,7 @@ window.GFStripe = null;
 								action: "gfstripe_update_payment_intent",
 								nonce: gforms_stripe_frontend_strings.create_payment_intent_nonce,
 								payment_intent: response.id,
-								payment_method: response.hasOwnProperty( 'payment_method' ) ? response.payment_method : null,
+								payment_method: response.paymentMethod,
 								currency: currency,
 								amount: amount,
 								feed_id: activeFeed.feedId
@@ -370,6 +370,8 @@ window.GFStripe = null;
 								}
 							}
 						});
+					} else if (response.hasOwnProperty('amount')) {
+						form.submit();
 					}
 				} else {
 					var currentResponse = JSON.parse($('#gf_stripe_response').val());
@@ -491,6 +493,8 @@ window.GFStripe = null;
 
 			if (event.error) {
 				cardErrors.html(event.error.message);
+
+				wp.a11y.speak( event.error.message, 'assertive' );
 				// Hide spinner.
 				if ( $('#gform_ajax_spinner_' + this.formId).length > 0 ) {
 					$('#gform_ajax_spinner_' + this.formId).remove();
@@ -609,20 +613,14 @@ window.GFStripe = null;
 					delete data.billing_details.address;
 				}
 
-                stripe.createPaymentMethod('card', card, data).then(function (response) {
-                    if (GFStripeObj.stripeResponse !== null) {
-                        $('#gf_stripe_credit_card_last_four').val(response.paymentMethod.card.last4);
-                        $('#stripe_credit_card_type').val(response.paymentMethod.card.brand);
+				stripe.createPaymentMethod('card', card, data).then(function (response) {
+					if (GFStripeObj.stripeResponse !== null) {
+						response.id = GFStripeObj.stripeResponse.id;
+						response.client_secret = GFStripeObj.stripeResponse.client_secret;
+					}
 
-                        response = {
-                            id: GFStripeObj.stripeResponse.id,
-                            client_secret: GFStripeObj.stripeResponse.client_secret,
-                            payment_method: response.paymentMethod.id
-                        };
-                    }
-
-                    GFStripeObj.elementsResponseHandler(response);
-                });
+					GFStripeObj.elementsResponseHandler(response);
+				});
             }
 		};
 
@@ -635,6 +633,19 @@ window.GFStripe = null;
 
 			return false;
 		};
+
+		this.invisibleCaptchaPending = function () {
+			var form = this.form,
+				reCaptcha = form.find('.ginput_recaptcha');
+
+			if (!reCaptcha.length || reCaptcha.data('size') !== 'invisible') {
+				return false;
+			}
+
+			var reCaptchaResponse = reCaptcha.find('.g-recaptcha-response');
+
+			return !(reCaptchaResponse.length && reCaptchaResponse.val());
+		}
 
 		this.init();
 
